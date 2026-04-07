@@ -109,7 +109,7 @@ class Exchange:
             self.client.set_leverage(leverage, symbol, params={"mgnMode": margin_mode})
             logger.info(f"杠杆设置: {symbol} {leverage}x ({margin_mode})")
         except Exception as e:
-            logger.warning(f"设置杠杆失败（可能已设置）: {e}")
+            logger.warning("设置杠杆失败（可能已设置）: " + str(e))
 
     def fetch_balance(self) -> dict:
         return self.client.fetch_balance()
@@ -167,7 +167,7 @@ class AsyncExchange:
             await self.client.set_leverage(leverage, symbol, params={"mgnMode": margin_mode})
             logger.info(f"杠杆设置: {symbol} {leverage}x ({margin_mode})")
         except Exception as e:
-            logger.warning(f"设置杠杆失败（可能已设置）: {e}")
+            logger.warning("设置杠杆失败（可能已设置）: " + str(e))
 
     async def fetch_balance(self) -> dict:
         return await self.client.fetch_balance()

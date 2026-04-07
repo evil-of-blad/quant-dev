@@ -58,7 +58,7 @@ class LiveTrader:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"主循环异常: {e}", exc_info=True)
+                logger.error("主循环异常: " + str(e), exc_info=True)
             await asyncio.sleep(self.poll_interval)
 
     async def _tick(self):
@@ -114,7 +114,7 @@ class LiveTrader:
                         await self._open_position(symbol, "short", size, current_price)
 
         except Exception as e:
-            logger.error(f"处理 {symbol} 异常: {e}", exc_info=True)
+            logger.error("处理 " + symbol + " 异常: " + str(e), exc_info=True)
 
     async def _open_position(self, symbol: str, direction: str, amount: float, price: float):
         side = "buy" if direction == "long" else "sell"
@@ -124,7 +124,7 @@ class LiveTrader:
             self._positions[symbol] = {"direction": direction, "amount": amount, "avg_price": filled}
             logger.success(f"[开{('多' if direction=='long' else '空')}] {symbol} {amount:.6f} @ {filled:.4f} | {self.leverage}x")
         except Exception as e:
-            logger.error(f"开仓失败 {symbol}: {e}")
+            logger.error("开仓失败 " + symbol + ": " + str(e))
 
     async def _close_position(self, symbol: str, pos: dict, price: float, reason: str):
         side = "sell" if pos["direction"] == "long" else "buy"
@@ -138,7 +138,7 @@ class LiveTrader:
             self._positions.pop(symbol, None)
             logger.success(f"[平仓] {symbol} @ {filled:.4f} | PnL:{pnl:+.4f} | 原因:{reason}")
         except Exception as e:
-            logger.error(f"平仓失败 {symbol}: {e}")
+            logger.error("平仓失败 " + symbol + ": " + str(e))
 
     def _estimate_equity(self, usdt_free: float) -> float:
         pos_margin = sum(
