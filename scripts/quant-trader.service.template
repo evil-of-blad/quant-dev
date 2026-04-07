@@ -1,0 +1,24 @@
+[Unit]
+Description=量化交易机器人 (OKX Bollinger Bands)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__PROJECT_DIR__
+ExecStart=__VENV_DIR__/bin/python main.py --strategy bollinger_bands
+Restart=on-failure
+RestartSec=30
+StartLimitInterval=600
+StartLimitBurst=5
+
+# 日志
+StandardOutput=append:__PROJECT_DIR__/logs/quant.log
+StandardError=append:__PROJECT_DIR__/logs/quant.log
+
+# 环境变量
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

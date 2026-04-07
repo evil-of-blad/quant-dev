@@ -1,0 +1,59 @@
+# =============================================
+# 虚拟货币量化交易系统配置文件
+# =============================================
+
+exchange:
+  name: okx
+  api_key: ""
+  api_secret: ""
+  passphrase: ""
+  sandbox: true      # true=模拟盘, false=正式交易
+  timeout: 30000
+  market_type: swap  # swap=永续合约, spot=现货
+
+trading:
+  symbols:           # 永续合约交易对（OKX 格式：BTC/USDT:USDT）
+    - BTC/USDT:USDT
+    - ETH/USDT:USDT
+  timeframe: 4h      # 时间周期: 1m 5m 15m 1h 4h 1d
+  base_currency: USDT
+  leverage: 3        # 杠杆倍数（建议 2~5，模拟盘测试用）
+  margin_mode: isolated  # isolated=逐仓, cross=全仓
+
+risk:
+  max_position_pct: 0.2      # 单笔最大仓位占总资金比例 (20%)
+  max_total_position_pct: 0.8 # 总仓位上限 (80%)
+  stop_loss_pct: 0.03         # 止损比例 (3%)
+  take_profit_pct: 0.06       # 止盈比例 (6%)
+  max_drawdown_pct: 0.15      # 最大回撤熔断 (15%)
+  risk_per_trade_pct: 0.01    # 单笔风险占总资金 (1%)
+  cooldown_bars: 100          # 熔断后冷却K线数（4h×100=约17天后重启）
+
+backtest:
+  initial_capital: 10000.0   # 初始资金 (USDT)
+  fee_rate: 0.0005           # 合约 Taker 手续费 (0.05%)
+  slippage_pct: 0.0002       # 滑点 (0.02%)
+  funding_rate: 0.0001       # 资金费率 每8小时 (0.01%)，4h K线=每2根收一次
+  start_date: "2024-01-01"
+  end_date: "2024-12-31"
+
+strategy:
+  name: bollinger_bands       # 策略名: ma_crossover / rsi / bollinger_bands / combo / adaptive
+  params:
+    # MA Crossover 参数（网格优化最优: fast=20, slow=30）
+    fast_period: 20
+    slow_period: 30
+    trend_period: 200          # 趋势过滤均线（SMA200）
+    trend_filter: true         # 开启趋势过滤
+    # RSI 参数
+    rsi_period: 14
+    rsi_oversold: 30
+    rsi_overbought: 70
+    # Bollinger Bands 参数（跨周期优化最优）
+    bb_period: 30
+    bb_std: 2.0
+    rsi_oversold: 35
+
+logging:
+  level: INFO
+  file: logs/quant.log
