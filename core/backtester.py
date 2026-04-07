@@ -1,6 +1,7 @@
 """
 回测引擎（合约版）
 - 支持多空双向
+- ATR 动态止损 + 移动止盈
 - 杠杆、保证金、强平
 - 资金费率（每8小时）
 - 手续费、滑点
@@ -23,7 +24,6 @@ class Backtester:
         self.slippage_pct: float = bt_cfg.get("slippage_pct", 0.0002)
         self.funding_rate: float = bt_cfg.get("funding_rate", 0.0001)
         self.leverage: int = t_cfg.get("leverage", 1)
-        # 4h K线 → 每2根收一次资金费（8h/4h=2）
         self.funding_interval: int = max(1, 8 // int(t_cfg.get("timeframe", "4h").replace("h", "").replace("m", "")))
 
         self.portfolio = Portfolio(self.initial_capital)
@@ -33,7 +33,8 @@ class Backtester:
     def run(self, df: pd.DataFrame, strategy: BaseStrategy, symbol: str) -> dict:
         logger.info(
             f"回测开始: {symbol} | {len(df)} 根K线 | 初始资金:{self.initial_capital} "
-            f"| 杠杆:{self.leverage}x | 资金费率:{self.funding_rate:.4%}/8h"
+            f"| 杠杆:{self.leverage}x | ATR止损:{'开' if self.risk.use_atr_stop else '关'} "
+            f"| 移动止盈:{'开' if self.risk.use_trailing_stop else '关'}"
         )
         self.risk.reset()
         strategy.reset()
@@ -45,17 +46,21 @@ class Backtester:
             timestamp = df.index[i]
             prices = {symbol: current_price}
 
+            # 获取当前 ATR 值（用于动态止损）
+            atr = float(bar.get("atr_14", 0)) if "atr_14" in df.columns else 0.0
+
             equity = self.portfolio.snapshot(timestamp, prices)
 
             # 强平检查
             if self.portfolio.check_liquidation(symbol, current_price):
+                self.risk.reset_trailing(symbol)
                 continue
 
-            # 资金费率扣除（每 funding_interval 根K线收一次）
+            # 资金费率
             if i % self.funding_interval == 0:
                 self.portfolio.deduct_funding_rate(symbol, current_price, self.funding_rate)
 
-            # 熔断检查
+            # 熔断
             if self.risk.check_drawdown(equity):
                 self._close_position(symbol, current_price, timestamp, reason="熔断")
                 continue
@@ -64,27 +69,29 @@ class Backtester:
 
             # 持仓中：止损/止盈
             if pos and pos.amount > 1e-9:
-                if self.risk.check_stop_loss(pos.avg_price, current_price, pos.direction):
+                # ATR 动态止损
+                if self.risk.check_stop_loss(pos.avg_price, current_price, pos.direction, atr):
                     self._close_position(symbol, current_price, timestamp, reason="止损")
                     continue
-                if self.risk.check_take_profit(pos.avg_price, current_price, pos.direction):
-                    self._close_position(symbol, current_price, timestamp, reason="止盈")
+                # 移动止盈（或固定止盈）
+                if self.risk.check_take_profit(pos.avg_price, current_price, pos.direction, symbol):
+                    self._close_position(symbol, current_price, timestamp, reason="移动止盈")
                     continue
 
-            # 策略信号: 1=做多, -1=做空, 0=不动
+            # 策略信号
             signal = strategy.generate_signal(prev_bars, symbol)
 
             if signal == 1:
                 if pos and pos.direction == "short" and pos.amount > 1e-9:
                     self._close_position(symbol, current_price, timestamp, reason="反手做多")
                 if not self.portfolio.get_position(symbol):
-                    self._open_position(symbol, "long", current_price, equity, timestamp)
+                    self._open_position(symbol, "long", current_price, equity, timestamp, atr)
 
             elif signal == -1:
                 if pos and pos.direction == "long" and pos.amount > 1e-9:
                     self._close_position(symbol, current_price, timestamp, reason="反手做空")
                 if not self.portfolio.get_position(symbol):
-                    self._open_position(symbol, "short", current_price, equity, timestamp)
+                    self._open_position(symbol, "short", current_price, equity, timestamp, atr)
 
         # 回测结束平仓
         last_price = float(df.iloc[-1]["close"])
@@ -104,10 +111,11 @@ class Backtester:
             return price * (1 + self.slippage_pct)
         return price * (1 - self.slippage_pct)
 
-    def _open_position(self, symbol: str, direction: str, price: float, equity: float, timestamp):
+    def _open_position(self, symbol: str, direction: str, price: float,
+                       equity: float, timestamp, atr: float = 0.0):
         side = "buy" if direction == "long" else "sell"
         filled_price = self._apply_slippage(price, side)
-        stop_price = self.risk.calc_stop_price(filled_price, direction)
+        stop_price = self.risk.calc_stop_price(filled_price, direction, atr)
         size = self.risk.calc_position_size(equity, filled_price, stop_price)
         if size <= 0:
             return
@@ -116,12 +124,13 @@ class Backtester:
                       order_type=OrderType.MARKET, amount=size)
         order.fill(filled_price, size, fee)
         self.portfolio.apply_order(order, leverage=self.leverage)
+        # 重置移动止盈状态
+        self.risk.reset_trailing(symbol)
 
     def _close_position(self, symbol: str, price: float, timestamp, reason: str = ""):
         pos = self.portfolio.get_position(symbol)
         if not pos or pos.amount < 1e-9:
             return
-        # 平多用卖单，平空用买单
         close_side = OrderSide.SELL if pos.direction == "long" else OrderSide.BUY
         filled_price = self._apply_slippage(price, close_side.value)
         fee = filled_price * pos.amount * self.fee_rate
@@ -129,6 +138,8 @@ class Backtester:
                       amount=pos.amount, note=reason)
         order.fill(filled_price, pos.amount, fee)
         self.portfolio.apply_order(order, leverage=self.leverage)
+        # 清除移动止盈状态
+        self.risk.reset_trailing(symbol)
 
     # ------------------------------------------------------------------
     def _build_result(self, symbol: str) -> dict:

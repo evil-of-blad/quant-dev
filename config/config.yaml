@@ -28,6 +28,13 @@ risk:
   max_drawdown_pct: 0.15      # 最大回撤熔断 (15%)
   risk_per_trade_pct: 0.01    # 单笔风险占总资金 (1%)
   cooldown_bars: 100          # 熔断后冷却K线数（4h×100=约17天后重启）
+  # ATR 动态止损（根据波动率自适应，替代固定止损）
+  use_atr_stop: true
+  atr_stop_mult: 2.5          # 止损距离 = ATR × 2.5
+  # 移动止盈（布林带策略不适用，关闭）
+  use_trailing_stop: false
+  trailing_activation_pct: 0.05
+  trailing_callback_pct: 0.03
 
 backtest:
   initial_capital: 10000.0   # 初始资金 (USDT)

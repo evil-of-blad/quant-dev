@@ -81,14 +81,17 @@ class LiveTrader:
             current_price = float(df["close"].iloc[-1])
             pos = self._positions.get(symbol)
 
+            # 获取 ATR（用于动态止损）
+            atr = float(df["atr_14"].iloc[-1]) if "atr_14" in df.columns else 0.0
+
             # 止损/止盈检查
             if pos and pos["amount"] > 1e-9:
                 direction = pos["direction"]
-                if self.risk.check_stop_loss(pos["avg_price"], current_price, direction):
+                if self.risk.check_stop_loss(pos["avg_price"], current_price, direction, atr):
                     await self._close_position(symbol, pos, current_price, "止损")
                     return
-                if self.risk.check_take_profit(pos["avg_price"], current_price, direction):
-                    await self._close_position(symbol, pos, current_price, "止盈")
+                if self.risk.check_take_profit(pos["avg_price"], current_price, direction, symbol):
+                    await self._close_position(symbol, pos, current_price, "移动止盈")
                     return
 
             signal = self.strategy.generate_signal(df, symbol)
@@ -97,7 +100,7 @@ class LiveTrader:
                 if pos and pos["direction"] == "short":
                     await self._close_position(symbol, pos, current_price, "反手做多")
                 if not self._positions.get(symbol):
-                    stop = self.risk.calc_stop_price(current_price, "long")
+                    stop = self.risk.calc_stop_price(current_price, "long", atr)
                     size = self.risk.calc_position_size(equity, current_price, stop)
                     size = min(size, usdt_free * self.leverage * 0.95 / current_price)
                     if size > 0:
@@ -107,7 +110,7 @@ class LiveTrader:
                 if pos and pos["direction"] == "long":
                     await self._close_position(symbol, pos, current_price, "反手做空")
                 if not self._positions.get(symbol):
-                    stop = self.risk.calc_stop_price(current_price, "short")
+                    stop = self.risk.calc_stop_price(current_price, "short", atr)
                     size = self.risk.calc_position_size(equity, current_price, stop)
                     size = min(size, usdt_free * self.leverage * 0.95 / current_price)
                     if size > 0:
@@ -122,6 +125,7 @@ class LiveTrader:
             result = await self.exchange.create_market_order(symbol, side, amount)
             filled = result.get("average", price) or price
             self._positions[symbol] = {"direction": direction, "amount": amount, "avg_price": filled}
+            self.risk.reset_trailing(symbol)
             logger.success(f"[开{('多' if direction=='long' else '空')}] {symbol} {amount:.6f} @ {filled:.4f} | {self.leverage}x")
         except Exception as e:
             logger.error("开仓失败 " + symbol + ": " + str(e))
@@ -136,6 +140,7 @@ class LiveTrader:
             else:
                 pnl = (pos["avg_price"] - filled) * pos["amount"] * self.leverage
             self._positions.pop(symbol, None)
+            self.risk.reset_trailing(symbol)
             logger.success(f"[平仓] {symbol} @ {filled:.4f} | PnL:{pnl:+.4f} | 原因:{reason}")
         except Exception as e:
             logger.error("平仓失败 " + symbol + ": " + str(e))

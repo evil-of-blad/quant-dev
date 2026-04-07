@@ -2158,3 +2158,423 @@
 2026-04-08 00:06:38.853 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.090286 @ 89890.02 | 杠杆:3x | 保证金:2705.27 | 强平价:119493.80
 2026-04-08 00:06:38.863 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.090286 @ 88434.18 | PnL:+127.4495 | 剩余仓位:0.000000
 2026-04-08 00:06:38.868 | INFO     | core.backtester:run:94 - 回测完成: 最终权益 13670.21, 收益率 36.70%, 强平次数 0
+2026-04-08 02:28:10.753 | INFO     | __main__:main:96 - 策略: bollinger_bands | 标的: BTC/USDT:USDT | 区间: 2023-01-01 → 2025-12-31
+2026-04-08 02:28:10.756 | INFO     | core.exchange:__init__:50 - 交易账户已连接模拟盘(Demo Trading)
+2026-04-08 02:28:10.759 | INFO     | core.exchange:__init__:56 - 行情数据使用正式公开接口
+2026-04-08 02:28:10.759 | INFO     | core.exchange:fetch_ohlcv_range:86 - 开始拉取 BTC/USDT:USDT 4h 数据: 2023-01-01 → 2025-12-31
+2026-04-08 02:28:11.552 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 300 条，最新: 2023-02-19 20:00:00.001000
+2026-04-08 02:28:11.670 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 600 条，最新: 2023-04-10 20:00:00.001000
+2026-04-08 02:28:11.936 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 900 条，最新: 2023-05-30 20:00:00.001000
+2026-04-08 02:28:12.029 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 1200 条，最新: 2023-07-19 20:00:00.001000
+2026-04-08 02:28:12.126 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 1500 条，最新: 2023-09-07 20:00:00.001000
+2026-04-08 02:28:12.237 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 1800 条，最新: 2023-10-27 20:00:00.001000
+2026-04-08 02:28:12.357 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 2100 条，最新: 2023-12-16 20:00:00.001000
+2026-04-08 02:28:12.467 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 2400 条，最新: 2024-02-04 20:00:00.001000
+2026-04-08 02:28:12.586 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 2700 条，最新: 2024-03-25 20:00:00.001000
+2026-04-08 02:28:12.693 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 3000 条，最新: 2024-05-14 20:00:00.001000
+2026-04-08 02:28:12.820 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 3300 条，最新: 2024-07-03 20:00:00.001000
+2026-04-08 02:28:12.942 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 3600 条，最新: 2024-08-22 20:00:00.001000
+2026-04-08 02:28:13.041 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 3900 条，最新: 2024-10-11 20:00:00.001000
+2026-04-08 02:28:13.156 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 4200 条，最新: 2024-11-30 20:00:00.001000
+2026-04-08 02:28:13.276 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 4500 条，最新: 2025-01-19 20:00:00.001000
+2026-04-08 02:28:13.389 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 4800 条，最新: 2025-03-10 20:00:00.001000
+2026-04-08 02:28:13.511 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 5100 条，最新: 2025-04-29 20:00:00.001000
+2026-04-08 02:28:13.624 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 5400 条，最新: 2025-06-18 20:00:00.001000
+2026-04-08 02:28:13.736 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 5700 条，最新: 2025-08-07 20:00:00.001000
+2026-04-08 02:28:13.827 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 6000 条，最新: 2025-09-26 20:00:00.001000
+2026-04-08 02:28:13.891 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 6300 条，最新: 2025-11-15 20:00:00.001000
+2026-04-08 02:28:13.953 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 6600 条，最新: 2026-01-04 20:00:00.001000
+2026-04-08 02:28:13.968 | INFO     | core.exchange:fetch_ohlcv_range:100 - 共拉取 6571 条 K 线
+2026-04-08 02:28:14.032 | INFO     | core.data_feed:get_historical_data:38 - 数据已缓存: /Users/mi/Desktop/workspace/quant-dev/data/BTC_USDT:USDT_4h_2023-01-01_2025-12-31.parquet
+2026-04-08 02:28:14.098 | INFO     | core.backtester:run:34 - 回测开始: BTC/USDT:USDT | 6372 根K线 | 初始资金:10000.0 | 杠杆:3x | 资金费率:0.0100%/8h
+2026-04-08 02:28:14.100 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.266366 @ 22525.40 | 杠杆:3x | 保证金:2000.00 | 强平价:15107.04
+2026-04-08 02:28:14.101 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.266366 @ 21797.74 | PnL:-196.7281 | 剩余仓位:0.000000
+2026-04-08 02:28:14.104 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.257796 @ 22805.24 | 杠杆:3x | 保证金:1959.70 | 强平价:30315.76
+2026-04-08 02:28:14.105 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.257796 @ 24340.57 | PnL:-398.9386 | 剩余仓位:0.000000
+2026-04-08 02:28:14.111 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.241460 @ 23351.07 | 杠杆:3x | 保证金:1879.45 | 强平价:15660.78
+2026-04-08 02:28:14.116 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.241460 @ 22314.34 | PnL:-253.0232 | 剩余仓位:0.000000
+2026-04-08 02:28:14.122 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.249126 @ 21990.50 | 杠杆:3x | 保证金:1826.13 | 强平价:29232.71
+2026-04-08 02:28:14.123 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.249126 @ 24020.40 | PnL:-508.6930 | 剩余仓位:0.000000
+2026-04-08 02:28:14.144 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.174861 @ 29579.11 | 杠杆:3x | 保证金:1724.08 | 强平价:19837.73
+2026-04-08 02:28:14.146 | WARNING  | core.risk:check_drawdown:81 - [风控] 最大回撤触发熔断! 回撤=15.54% | 峰值=10039.97 → 当前=8479.67 | 冷却 100 根K线后重启
+2026-04-08 02:28:14.146 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.174861 @ 28804.24 | PnL:-138.0142 | 剩余仓位:0.000000
+2026-04-08 02:28:14.151 | INFO     | core.risk:check_drawdown:71 - [风控] 熔断冷却结束，恢复交易，重置峰值=8475.64
+2026-04-08 02:28:14.164 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.187115 @ 27177.86 | 杠杆:3x | 保证金:1695.13 | 强平价:36128.44
+2026-04-08 02:28:14.165 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.187115 @ 28081.42 | PnL:-171.6954 | 剩余仓位:0.000000
+2026-04-08 02:28:14.169 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.191775 @ 25977.19 | 杠杆:3x | 保证金:1660.59 | 强平价:17422.04
+2026-04-08 02:28:14.176 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.191775 @ 25122.17 | PnL:-166.3802 | 剩余仓位:0.000000
+2026-04-08 02:28:14.179 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.181511 @ 26841.63 | 杠杆:3x | 保证金:1624.02 | 强平价:35681.47
+2026-04-08 02:28:14.179 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.181511 @ 27989.30 | PnL:-210.8540 | 剩余仓位:0.000000
+2026-04-08 02:28:14.189 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.158691 @ 29898.78 | 杠杆:3x | 保证金:1581.55 | 强平价:20052.11
+2026-04-08 02:28:14.191 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.158691 @ 30832.43 | PnL:+145.7158 | 剩余仓位:0.000000
+2026-04-08 02:28:14.191 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.156639 @ 30832.43 | 杠杆:3x | 保证金:1609.85 | 强平价:40986.58
+2026-04-08 02:28:14.196 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.156639 @ 29722.44 | PnL:+171.5394 | 剩余仓位:0.000000
+2026-04-08 02:28:14.196 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.166130 @ 29722.44 | 杠杆:3x | 保证金:1645.93 | 强平价:19933.85
+2026-04-08 02:28:14.210 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.166130 @ 29530.09 | PnL:-34.4082 | 剩余仓位:0.000000
+2026-04-08 02:28:14.210 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.165851 @ 29530.09 | 杠杆:3x | 保证金:1632.54 | 强平价:39255.34
+2026-04-08 02:28:14.215 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.165851 @ 28742.85 | PnL:+128.1823 | 剩余仓位:0.000000
+2026-04-08 02:28:14.215 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.173251 @ 28742.85 | 杠杆:3x | 保证金:1659.91 | 强平价:19276.87
+2026-04-08 02:28:14.216 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.173251 @ 26608.78 | PnL:-372.0349 | 剩余仓位:0.000000
+2026-04-08 02:28:14.223 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.173355 @ 27414.42 | 杠杆:3x | 保证金:1584.14 | 强平价:36442.90
+2026-04-08 02:28:14.225 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.173355 @ 25656.03 | PnL:+302.6016 | 剩余仓位:0.000000
+2026-04-08 02:28:14.231 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.196498 @ 25115.22 | 杠杆:3x | 保证金:1645.03 | 强平价:16843.94
+2026-04-08 02:28:14.233 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.196498 @ 26689.36 | PnL:+306.6923 | 剩余仓位:0.000000
+2026-04-08 02:28:14.235 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.188097 @ 27192.56 | 杠杆:3x | 保证金:1704.95 | 强平价:36147.98
+2026-04-08 02:28:14.239 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.188097 @ 26246.75 | PnL:+175.4364 | 剩余仓位:0.000000
+2026-04-08 02:28:14.240 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.199126 @ 26246.75 | 杠杆:3x | 保证金:1742.14 | 强平价:17602.82
+2026-04-08 02:28:14.242 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.199126 @ 27022.89 | PnL:+151.8603 | 剩余仓位:0.000000
+2026-04-08 02:28:14.242 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.196622 @ 27022.89 | 杠杆:3x | 保证金:1771.10 | 强平价:35922.43
+2026-04-08 02:28:14.244 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.196622 @ 28010.70 | PnL:-196.9784 | 剩余仓位:0.000000
+2026-04-08 02:28:14.250 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.192266 @ 27015.40 | 杠杆:3x | 保证金:1731.38 | 强平价:18118.33
+2026-04-08 02:28:14.254 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.192266 @ 27844.43 | PnL:+156.7168 | 剩余仓位:0.000000
+2026-04-08 02:28:14.254 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.189776 @ 27844.43 | 杠杆:3x | 保证金:1761.40 | 强平价:37014.53
+2026-04-08 02:28:14.256 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.189776 @ 28756.45 | PnL:-175.8082 | 剩余仓位:0.000000
+2026-04-08 02:28:14.312 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.146695 @ 35296.46 | 杠杆:3x | 保证金:1725.93 | 强平价:23672.16
+2026-04-08 02:28:14.313 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.146695 @ 37512.40 | PnL:+322.3146 | 剩余仓位:0.000000
+2026-04-08 02:28:14.319 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.140496 @ 38212.36 | 杠杆:3x | 保证金:1789.56 | 强平价:50796.96
+2026-04-08 02:28:14.321 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.140496 @ 36770.65 | PnL:+199.9706 | 剩余仓位:0.000000
+2026-04-08 02:28:14.321 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.149352 @ 36770.65 | 杠杆:3x | 保证金:1830.59 | 强平价:24660.85
+2026-04-08 02:28:14.324 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.149352 @ 38575.58 | PnL:+266.6891 | 剩余仓位:0.000000
+2026-04-08 02:28:14.324 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.146387 @ 38575.58 | 杠杆:3x | 保证金:1882.32 | 强平价:51279.81
+2026-04-08 02:28:14.325 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.146387 @ 39775.65 | PnL:-178.5863 | 剩余仓位:0.000000
+2026-04-08 02:28:14.330 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.131471 @ 42124.02 | 杠杆:3x | 保证金:1846.04 | 强平价:28251.18
+2026-04-08 02:28:14.330 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.131471 @ 40776.04 | PnL:-179.9014 | 剩余仓位:0.000000
+2026-04-08 02:28:14.337 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.123225 @ 44051.09 | 杠杆:3x | 保证金:1809.39 | 强平价:58558.58
+2026-04-08 02:28:14.341 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.123225 @ 42410.58 | PnL:+199.5378 | 剩余仓位:0.000000
+2026-04-08 02:28:14.341 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.130957 @ 42410.58 | 杠杆:3x | 保证金:1851.31 | 强平价:28443.36
+2026-04-08 02:28:14.345 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.130957 @ 43534.09 | PnL:+144.2806 | 剩余仓位:0.000000
+2026-04-08 02:28:14.345 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.129401 @ 43534.09 | 杠杆:3x | 保证金:1877.78 | 强平价:57871.32
+2026-04-08 02:28:14.345 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.129401 @ 45406.48 | PnL:-245.2263 | 剩余仓位:0.000000
+2026-04-08 02:28:14.353 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.126043 @ 43496.70 | 杠杆:3x | 保证金:1827.49 | 强平价:29171.79
+2026-04-08 02:28:14.354 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.126043 @ 41732.45 | PnL:-225.0015 | 剩余仓位:0.000000
+2026-04-08 02:28:14.361 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.127071 @ 42051.69 | 杠杆:3x | 保证金:1781.19 | 强平价:55900.71
+2026-04-08 02:28:14.363 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.127071 @ 43520.30 | PnL:-189.3837 | 剩余仓位:0.000000
+2026-04-08 02:28:14.394 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.080817 @ 64732.84 | 杠杆:3x | 保证金:1743.85 | 强平价:43414.16
+2026-04-08 02:28:14.395 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.080817 @ 61926.61 | PnL:-229.2949 | 剩余仓位:0.000000
+2026-04-08 02:28:14.398 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.072965 @ 69783.94 | 杠杆:3x | 保证金:1697.26 | 强平价:92766.12
+2026-04-08 02:28:14.403 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.072965 @ 66725.24 | PnL:+220.7436 | 剩余仓位:0.000000
+2026-04-08 02:28:14.403 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.078403 @ 66725.24 | 杠杆:3x | 保证金:1743.83 | 强平价:44750.40
+2026-04-08 02:28:14.407 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.078403 @ 70696.96 | PnL:+308.6247 | 剩余仓位:0.000000
+2026-04-08 02:28:14.407 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.076519 @ 70696.96 | 杠杆:3x | 保证金:1803.22 | 强平价:93979.82
+2026-04-08 02:28:14.410 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.076519 @ 66863.27 | PnL:+290.7923 | 剩余仓位:0.000000
+2026-04-08 02:28:14.410 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.083547 @ 66863.27 | 杠杆:3x | 保证金:1862.07 | 强平价:44842.97
+2026-04-08 02:28:14.411 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.083547 @ 64770.94 | PnL:-177.5124 | 剩余仓位:0.000000
+2026-04-08 02:28:14.417 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.081954 @ 66804.24 | 杠杆:3x | 保证金:1824.95 | 强平价:88805.10
+2026-04-08 02:28:14.420 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.081954 @ 62291.46 | PnL:+367.2863 | 剩余仓位:0.000000
+2026-04-08 02:28:14.421 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.093089 @ 61224.24 | 杠杆:3x | 保证金:1899.76 | 强平价:41061.06
+2026-04-08 02:28:14.422 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.093089 @ 59292.24 | PnL:-182.6071 | 剩余仓位:0.000000
+2026-04-08 02:28:14.431 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.086349 @ 64710.06 | 杠杆:3x | 保证金:1862.55 | 强平价:86021.23
+2026-04-08 02:28:14.432 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.086349 @ 67213.44 | PnL:-219.0672 | 剩余仓位:0.000000
+2026-04-08 02:28:14.447 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.080749 @ 67574.51 | 杠杆:3x | 保证金:1818.87 | 强平价:45319.97
+2026-04-08 02:28:14.450 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.080749 @ 65509.40 | PnL:-169.4019 | 剩余仓位:0.000000
+2026-04-08 02:28:14.460 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.085250 @ 62757.25 | 杠杆:3x | 保证金:1783.35 | 强平价:83425.30
+2026-04-08 02:28:14.462 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.085250 @ 60405.78 | PnL:+197.8881 | 剩余仓位:0.000000
+2026-04-08 02:28:14.462 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.090581 @ 60405.78 | 杠杆:3x | 保证金:1823.86 | 强平价:40512.14
+2026-04-08 02:28:14.463 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.090581 @ 58225.85 | PnL:-200.0960 | 剩余仓位:0.000000
+2026-04-08 02:28:14.469 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.089046 @ 60045.19 | 杠杆:3x | 保证金:1782.25 | 强平价:79820.07
+2026-04-08 02:28:14.470 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.089046 @ 62658.23 | PnL:-235.4693 | 剩余仓位:0.000000
+2026-04-08 02:28:14.476 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.081186 @ 64106.32 | 杠杆:3x | 保证金:1734.84 | 强平价:42993.97
+2026-04-08 02:28:14.477 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.081186 @ 67983.60 | PnL:+312.0202 | 剩余仓位:0.000000
+2026-04-08 02:28:14.479 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.077688 @ 69361.82 | 杠杆:3x | 保证金:1796.19 | 强平价:92204.99
+2026-04-08 02:28:14.481 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.077688 @ 64648.03 | PnL:+363.6931 | 剩余仓位:0.000000
+2026-04-08 02:28:14.481 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.089130 @ 62918.78 | 杠杆:3x | 保证金:1869.32 | 强平价:42197.53
+2026-04-08 02:28:14.483 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.089130 @ 60863.82 | PnL:-185.8711 | 剩余仓位:0.000000
+2026-04-08 02:28:14.486 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.089045 @ 61684.76 | 杠杆:3x | 保证金:1830.91 | 强平价:81999.61
+2026-04-08 02:28:14.490 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.089045 @ 57055.51 | PnL:+409.6733 | 剩余仓位:0.000000
+2026-04-08 02:28:14.498 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.096661 @ 59417.18 | 杠杆:3x | 保证金:1914.43 | 强平价:39849.12
+2026-04-08 02:28:14.501 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.096661 @ 57279.34 | PnL:-209.4132 | 剩余仓位:0.000000
+2026-04-08 02:28:14.509 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.094065 @ 59647.97 | 杠杆:3x | 保证金:1870.27 | 强平价:79292.03
+2026-04-08 02:28:14.512 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.094065 @ 61780.15 | PnL:-203.4704 | 剩余仓位:0.000000
+2026-04-08 02:28:14.520 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.086384 @ 63581.61 | 杠杆:3x | 保证金:1830.81 | 强平价:42642.07
+2026-04-08 02:28:14.521 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.086384 @ 60802.14 | PnL:-242.7287 | 剩余仓位:0.000000
+2026-04-08 02:28:14.524 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.084119 @ 63527.19 | 杠杆:3x | 保证金:1781.28 | 强平价:84448.81
+2026-04-08 02:28:14.526 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.084119 @ 60659.03 | PnL:+238.7162 | 剩余仓位:0.000000
+2026-04-08 02:28:14.526 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.090503 @ 60659.03 | 杠杆:3x | 保证金:1829.94 | 强平价:40681.99
+2026-04-08 02:28:14.529 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.090503 @ 64302.24 | PnL:+326.8118 | 剩余仓位:0.000000
+2026-04-08 02:28:14.529 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.087891 @ 64607.08 | 杠杆:3x | 保证金:1892.80 | 强平价:85884.34
+2026-04-08 02:28:14.530 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.087891 @ 66987.39 | PnL:-212.1528 | 剩余仓位:0.000000
+2026-04-08 02:28:14.555 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.059652 @ 93052.71 | 杠杆:3x | 保证金:1850.26 | 强平价:62407.35
+2026-04-08 02:28:14.561 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.059652 @ 103083.68 | PnL:+595.2936 | 剩余仓位:0.000000
+2026-04-08 02:28:14.562 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.057659 @ 102274.44 | 杠杆:3x | 保证金:1965.68 | 强平价:135956.82
+2026-04-08 02:28:14.565 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.057659 @ 95691.13 | PnL:+376.8276 | 剩余仓位:0.000000
+2026-04-08 02:28:14.570 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.061131 @ 100223.94 | 杠杆:3x | 保证金:2042.28 | 强平价:67216.86
+2026-04-08 02:28:14.571 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.061131 @ 97184.56 | PnL:-188.7724 | 剩余仓位:0.000000
+2026-04-08 02:28:14.582 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.058857 @ 102129.37 | 杠杆:3x | 保证金:2003.66 | 强平价:135763.98
+2026-04-08 02:28:14.583 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.058857 @ 95676.23 | PnL:+376.9945 | 剩余仓位:0.000000
+2026-04-08 02:28:14.586 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.068624 @ 90888.27 | 杠杆:3x | 保证金:2079.04 | 强平价:60955.74
+2026-04-08 02:28:14.587 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.068624 @ 96548.99 | PnL:+385.1489 | 剩余仓位:0.000000
+2026-04-08 02:28:14.588 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.064762 @ 99830.63 | 杠杆:3x | 保证金:2155.06 | 强平价:132708.18
+2026-04-08 02:28:14.589 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.064762 @ 104020.80 | PnL:-274.7304 | 剩余仓位:0.000000
+2026-04-08 02:28:14.595 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.062139 @ 101397.58 | 杠杆:3x | 保证金:2100.25 | 强平价:68003.97
+2026-04-08 02:28:14.600 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.062139 @ 98250.25 | PnL:-198.6251 | 剩余仓位:0.000000
+2026-04-08 02:28:14.611 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.062729 @ 98392.72 | 杠杆:3x | 保证金:2057.35 | 强平价:130796.72
+2026-04-08 02:28:14.614 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.062729 @ 93965.09 | PnL:+274.7928 | 剩余仓位:0.000000
+2026-04-08 02:28:14.614 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.067492 @ 93965.09 | 杠杆:3x | 保证金:2113.97 | 强平价:63019.25
+2026-04-08 02:28:14.614 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.067492 @ 89292.24 | PnL:-318.3947 | 剩余仓位:0.000000
+2026-04-08 02:28:14.618 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.065730 @ 93500.60 | 杠杆:3x | 保证金:2048.59 | 强平价:124293.46
+2026-04-08 02:28:14.619 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.065730 @ 85608.82 | PnL:+515.9112 | 剩余仓位:0.000000
+2026-04-08 02:28:14.622 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.077692 @ 83078.81 | 杠杆:3x | 保证金:2151.52 | 强平价:55718.19
+2026-04-08 02:28:14.623 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.077692 @ 80021.99 | PnL:-240.5993 | 剩余仓位:0.000000
+2026-04-08 02:28:14.629 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.072638 @ 86830.03 | 杠杆:3x | 保证金:2102.38 | 强平价:115426.05
+2026-04-08 02:28:14.635 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.072638 @ 84061.01 | PnL:+198.0825 | 剩余仓位:0.000000
+2026-04-08 02:28:14.635 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.076564 @ 84061.01 | 杠杆:3x | 保证金:2145.34 | 强平价:56376.92
+2026-04-08 02:28:14.639 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.076564 @ 86754.75 | PnL:+202.9212 | 剩余仓位:0.000000
+2026-04-08 02:28:14.639 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.075512 @ 86754.75 | 杠杆:3x | 保证金:2183.69 | 强平价:115325.98
+2026-04-08 02:28:14.642 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.075512 @ 79627.22 | PnL:+535.2105 | 剩余仓位:0.000000
+2026-04-08 02:28:14.642 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.087608 @ 78435.58 | 杠杆:3x | 保证金:2290.52 | 强平价:52604.13
+2026-04-08 02:28:14.642 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.087608 @ 75104.48 | PnL:-295.1204 | 剩余仓位:0.000000
+2026-04-08 02:28:14.651 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.076744 @ 87199.36 | 杠杆:3x | 保证金:2230.68 | 强平价:115917.01
+2026-04-08 02:28:14.652 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.076744 @ 90949.99 | PnL:-291.3283 | 剩余仓位:0.000000
+2026-04-08 02:28:14.678 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.061734 @ 105569.51 | 杠杆:3x | 保证金:2172.42 | 强平价:70801.95
+2026-04-08 02:28:14.683 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.061734 @ 101855.92 | PnL:-232.3996 | 剩余仓位:0.000000
+2026-04-08 02:28:14.686 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.059140 @ 107678.46 | 杠杆:3x | 保证金:2122.70 | 强平价:143140.57
+2026-04-08 02:28:14.688 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.059140 @ 104255.15 | PnL:+199.3716 | 剩余仓位:0.000000
+2026-04-08 02:28:14.688 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.062276 @ 104255.15 | 杠杆:3x | 保证金:2164.21 | 强平价:69920.45
+2026-04-08 02:28:14.690 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.062276 @ 108574.88 | PnL:+265.6365 | 剩余仓位:0.000000
+2026-04-08 02:28:14.690 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.061211 @ 108574.88 | 杠杆:3x | 保证金:2215.32 | 强平价:144332.21
+2026-04-08 02:28:14.694 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.061211 @ 102238.04 | PnL:+384.7549 | 剩余仓位:0.000000
+2026-04-08 02:28:14.694 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.067298 @ 102238.04 | 杠杆:3x | 保证金:2293.46 | 强平价:68567.65
+2026-04-08 02:28:14.694 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.067298 @ 98826.73 | PnL:-232.8990 | 剩余仓位:0.000000
+2026-04-08 02:28:14.699 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.062125 @ 108406.41 | 杠杆:3x | 保证金:2244.91 | 强平价:144108.26
+2026-04-08 02:28:14.701 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.062125 @ 105356.87 | PnL:+186.1800 | 剩余仓位:0.000000
+2026-04-08 02:28:14.701 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.065017 @ 105356.87 | 杠杆:3x | 保证金:2283.32 | 强平价:70659.34
+2026-04-08 02:28:14.701 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.065017 @ 109608.07 | PnL:+272.8367 | 剩余仓位:0.000000
+2026-04-08 02:28:14.701 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.063961 @ 109608.07 | 杠杆:3x | 保证金:2336.87 | 强平价:145705.67
+2026-04-08 02:28:14.707 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.063961 @ 113248.75 | PnL:-236.4815 | 剩余仓位:0.000000
+2026-04-08 02:28:14.717 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.059536 @ 115453.29 | 杠杆:3x | 保证金:2291.22 | 强平价:77430.67
+2026-04-08 02:28:14.726 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.059536 @ 117389.72 | PnL:+111.7933 | 剩余仓位:0.000000
+2026-04-08 02:28:14.726 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.058988 @ 117389.72 | 杠杆:3x | 保证金:2308.20 | 强平价:156050.06
+2026-04-08 02:28:14.728 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.058988 @ 121730.34 | PnL:-259.6354 | 剩余仓位:0.000000
+2026-04-08 02:28:14.733 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.058709 @ 115280.45 | 杠杆:3x | 保证金:2255.98 | 强平价:77314.76
+2026-04-08 02:28:14.737 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.058709 @ 111443.71 | PnL:-228.5212 | 剩余仓位:0.000000
+2026-04-08 02:28:14.748 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.057905 @ 114324.23 | 杠杆:3x | 保证金:2206.65 | 强平价:151975.01
+2026-04-08 02:28:14.755 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.057905 @ 112481.79 | PnL:+103.4298 | 剩余仓位:0.000000
+2026-04-08 02:28:14.755 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.059530 @ 112481.79 | 杠杆:3x | 保证金:2232.01 | 强平价:75437.79
+2026-04-08 02:28:14.758 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.059530 @ 108917.81 | PnL:-215.4053 | 剩余仓位:0.000000
+2026-04-08 02:28:14.760 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.057655 @ 113746.15 | 杠杆:3x | 保证金:2186.01 | 强平价:151206.54
+2026-04-08 02:28:14.761 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.057655 @ 117387.27 | PnL:-213.3128 | 剩余仓位:0.000000
+2026-04-08 02:28:14.768 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.055141 @ 116619.22 | 杠杆:3x | 保证金:2143.48 | 强平价:78212.62
+2026-04-08 02:28:14.768 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.055141 @ 112753.54 | PnL:-216.2640 | 剩余仓位:0.000000
+2026-04-08 02:28:14.775 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.055560 @ 113361.82 | 杠杆:3x | 保证金:2099.46 | 强平价:150695.65
+2026-04-08 02:28:14.780 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.055560 @ 109994.99 | PnL:+184.0054 | 剩余仓位:0.000000
+2026-04-08 02:28:14.780 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.058352 @ 109994.99 | 杠杆:3x | 保证金:2139.46 | 强平价:73769.98
+2026-04-08 02:28:14.781 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.058352 @ 106463.80 | PnL:-209.1572 | 剩余仓位:0.000000
+2026-04-08 02:28:14.787 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.059347 @ 105954.00 | 杠杆:3x | 保证金:2096.00 | 强平价:140848.19
+2026-04-08 02:28:14.790 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.059347 @ 98649.23 | PnL:+430.5864 | 剩余仓位:0.000000
+2026-04-08 02:28:14.790 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.067437 @ 97105.82 | 杠杆:3x | 保证金:2182.84 | 强平价:65125.63
+2026-04-08 02:28:14.792 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.067437 @ 93973.40 | PnL:-214.4096 | 剩余仓位:0.000000
+2026-04-08 02:28:14.798 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.070959 @ 90407.71 | 杠杆:3x | 保证金:2138.40 | 强平价:120181.99
+2026-04-08 02:28:14.801 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.070959 @ 86339.26 | PnL:+285.6286 | 剩余仓位:0.000000
+2026-04-08 02:28:14.801 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.076349 @ 86339.26 | 杠杆:3x | 保证金:2197.30 | 强平价:57904.87
+2026-04-08 02:28:14.802 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.076349 @ 91840.73 | PnL:+416.5236 | 剩余仓位:0.000000
+2026-04-08 02:28:14.850 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.072915 @ 93743.15 | 杠杆:3x | 保证金:2278.42 | 强平价:124615.89
+2026-04-08 02:28:14.853 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.072915 @ 88132.22 | PnL:+405.9062 | 剩余仓位:0.000000
+2026-04-08 02:28:14.854 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.081413 @ 87001.90 | 杠杆:3x | 保证金:2361.04 | 强平价:58349.27
+2026-04-08 02:28:14.858 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.081413 @ 89890.02 | PnL:+231.4722 | 剩余仓位:0.000000
+2026-04-08 02:28:14.858 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.080258 @ 89890.02 | 杠杆:3x | 保证金:2404.79 | 强平价:119493.80
+2026-04-08 02:28:14.864 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.080258 @ 88434.18 | PnL:+113.2934 | 剩余仓位:0.000000
+2026-04-08 02:28:14.870 | INFO     | core.backtester:run:94 - 回测完成: 最终权益 12151.83, 收益率 21.52%, 强平次数 0
+2026-04-08 02:28:31.047 | INFO     | __main__:main:96 - 策略: bollinger_bands | 标的: BTC/USDT:USDT | 区间: 2023-01-01 → 2023-12-31
+2026-04-08 02:28:31.050 | INFO     | core.exchange:__init__:50 - 交易账户已连接模拟盘(Demo Trading)
+2026-04-08 02:28:31.053 | INFO     | core.exchange:__init__:56 - 行情数据使用正式公开接口
+2026-04-08 02:28:31.053 | INFO     | core.exchange:fetch_ohlcv_range:86 - 开始拉取 BTC/USDT:USDT 4h 数据: 2023-01-01 → 2023-12-31
+2026-04-08 02:28:31.843 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 300 条，最新: 2023-02-19 20:00:00.001000
+2026-04-08 02:28:31.954 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 600 条，最新: 2023-04-10 20:00:00.001000
+2026-04-08 02:28:32.074 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 900 条，最新: 2023-05-30 20:00:00.001000
+2026-04-08 02:28:32.224 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 1200 条，最新: 2023-07-19 20:00:00.001000
+2026-04-08 02:28:32.306 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 1500 条，最新: 2023-09-07 20:00:00.001000
+2026-04-08 02:28:32.421 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 1800 条，最新: 2023-10-27 20:00:00.001000
+2026-04-08 02:28:32.553 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 2100 条，最新: 2023-12-16 20:00:00.001000
+2026-04-08 02:28:32.667 | DEBUG    | core.exchange:fetch_ohlcv_range:93 - 已拉取 2400 条，最新: 2024-02-04 20:00:00.001000
+2026-04-08 02:28:32.678 | INFO     | core.exchange:fetch_ohlcv_range:100 - 共拉取 2185 条 K 线
+2026-04-08 02:28:32.728 | INFO     | core.data_feed:get_historical_data:38 - 数据已缓存: /Users/mi/Desktop/workspace/quant-dev/data/BTC_USDT:USDT_4h_2023-01-01_2023-12-31.parquet
+2026-04-08 02:28:32.759 | INFO     | core.backtester:run:34 - 回测开始: BTC/USDT:USDT | 1986 根K线 | 初始资金:10000.0 | 杠杆:3x | 资金费率:0.0100%/8h
+2026-04-08 02:28:32.762 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.266366 @ 22525.40 | 杠杆:3x | 保证金:2000.00 | 强平价:15107.04
+2026-04-08 02:28:32.763 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.266366 @ 21797.74 | PnL:-196.7281 | 剩余仓位:0.000000
+2026-04-08 02:28:32.766 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.257796 @ 22805.24 | 杠杆:3x | 保证金:1959.70 | 强平价:30315.76
+2026-04-08 02:28:32.767 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.257796 @ 24340.57 | PnL:-398.9386 | 剩余仓位:0.000000
+2026-04-08 02:28:32.772 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.241460 @ 23351.07 | 杠杆:3x | 保证金:1879.45 | 强平价:15660.78
+2026-04-08 02:28:32.777 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.241460 @ 22314.34 | PnL:-253.0232 | 剩余仓位:0.000000
+2026-04-08 02:28:32.783 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.249126 @ 21990.50 | 杠杆:3x | 保证金:1826.13 | 强平价:29232.71
+2026-04-08 02:28:32.784 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.249126 @ 24020.40 | PnL:-508.6930 | 剩余仓位:0.000000
+2026-04-08 02:28:32.806 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.174861 @ 29579.11 | 杠杆:3x | 保证金:1724.08 | 强平价:19837.73
+2026-04-08 02:28:32.807 | WARNING  | core.risk:check_drawdown:81 - [风控] 最大回撤触发熔断! 回撤=15.54% | 峰值=10039.97 → 当前=8479.67 | 冷却 100 根K线后重启
+2026-04-08 02:28:32.807 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.174861 @ 28804.24 | PnL:-138.0142 | 剩余仓位:0.000000
+2026-04-08 02:28:32.812 | INFO     | core.risk:check_drawdown:71 - [风控] 熔断冷却结束，恢复交易，重置峰值=8475.64
+2026-04-08 02:28:32.825 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.187115 @ 27177.86 | 杠杆:3x | 保证金:1695.13 | 强平价:36128.44
+2026-04-08 02:28:32.826 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.187115 @ 28081.42 | PnL:-171.6954 | 剩余仓位:0.000000
+2026-04-08 02:28:32.831 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.191775 @ 25977.19 | 杠杆:3x | 保证金:1660.59 | 强平价:17422.04
+2026-04-08 02:28:32.836 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.191775 @ 25122.17 | PnL:-166.3802 | 剩余仓位:0.000000
+2026-04-08 02:28:32.840 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.181511 @ 26841.63 | 杠杆:3x | 保证金:1624.02 | 强平价:35681.47
+2026-04-08 02:28:32.840 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.181511 @ 27989.30 | PnL:-210.8540 | 剩余仓位:0.000000
+2026-04-08 02:28:32.850 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.158691 @ 29898.78 | 杠杆:3x | 保证金:1581.55 | 强平价:20052.11
+2026-04-08 02:28:32.853 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.158691 @ 30832.43 | PnL:+145.7158 | 剩余仓位:0.000000
+2026-04-08 02:28:32.853 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.156639 @ 30832.43 | 杠杆:3x | 保证金:1609.85 | 强平价:40986.58
+2026-04-08 02:28:32.858 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.156639 @ 29722.44 | PnL:+171.5394 | 剩余仓位:0.000000
+2026-04-08 02:28:32.858 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.166130 @ 29722.44 | 杠杆:3x | 保证金:1645.93 | 强平价:19933.85
+2026-04-08 02:28:32.871 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.166130 @ 29530.09 | PnL:-34.4082 | 剩余仓位:0.000000
+2026-04-08 02:28:32.871 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.165851 @ 29530.09 | 杠杆:3x | 保证金:1632.54 | 强平价:39255.34
+2026-04-08 02:28:32.877 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.165851 @ 28742.85 | PnL:+128.1823 | 剩余仓位:0.000000
+2026-04-08 02:28:32.877 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.173251 @ 28742.85 | 杠杆:3x | 保证金:1659.91 | 强平价:19276.87
+2026-04-08 02:28:32.877 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.173251 @ 26608.78 | PnL:-372.0349 | 剩余仓位:0.000000
+2026-04-08 02:28:32.885 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.173355 @ 27414.42 | 杠杆:3x | 保证金:1584.14 | 强平价:36442.90
+2026-04-08 02:28:32.887 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.173355 @ 25656.03 | PnL:+302.6016 | 剩余仓位:0.000000
+2026-04-08 02:28:32.893 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.196498 @ 25115.22 | 杠杆:3x | 保证金:1645.03 | 强平价:16843.94
+2026-04-08 02:28:32.895 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.196498 @ 26689.36 | PnL:+306.6923 | 剩余仓位:0.000000
+2026-04-08 02:28:32.897 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.188097 @ 27192.56 | 杠杆:3x | 保证金:1704.95 | 强平价:36147.98
+2026-04-08 02:28:32.901 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.188097 @ 26246.75 | PnL:+175.4364 | 剩余仓位:0.000000
+2026-04-08 02:28:32.901 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.199126 @ 26246.75 | 杠杆:3x | 保证金:1742.14 | 强平价:17602.82
+2026-04-08 02:28:32.904 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.199126 @ 27022.89 | PnL:+151.8603 | 剩余仓位:0.000000
+2026-04-08 02:28:32.904 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.196622 @ 27022.89 | 杠杆:3x | 保证金:1771.10 | 强平价:35922.43
+2026-04-08 02:28:32.906 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.196622 @ 28010.70 | PnL:-196.9784 | 剩余仓位:0.000000
+2026-04-08 02:28:32.912 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.192266 @ 27015.40 | 杠杆:3x | 保证金:1731.38 | 强平价:18118.33
+2026-04-08 02:28:32.915 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.192266 @ 27844.43 | PnL:+156.7168 | 剩余仓位:0.000000
+2026-04-08 02:28:32.915 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.189776 @ 27844.43 | 杠杆:3x | 保证金:1761.40 | 强平价:37014.53
+2026-04-08 02:28:32.917 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.189776 @ 28756.45 | PnL:-175.8082 | 剩余仓位:0.000000
+2026-04-08 02:28:32.934 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.146695 @ 35296.46 | 杠杆:3x | 保证金:1725.93 | 强平价:23672.16
+2026-04-08 02:28:32.934 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.146695 @ 37512.40 | PnL:+322.3146 | 剩余仓位:0.000000
+2026-04-08 02:28:32.939 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.140496 @ 38212.36 | 杠杆:3x | 保证金:1789.56 | 强平价:50796.96
+2026-04-08 02:28:32.941 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.140496 @ 36770.65 | PnL:+199.9706 | 剩余仓位:0.000000
+2026-04-08 02:28:32.941 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.149352 @ 36770.65 | 杠杆:3x | 保证金:1830.59 | 强平价:24660.85
+2026-04-08 02:28:32.944 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.149352 @ 38575.58 | PnL:+266.6891 | 剩余仓位:0.000000
+2026-04-08 02:28:32.944 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.146387 @ 38575.58 | 杠杆:3x | 保证金:1882.32 | 强平价:51279.81
+2026-04-08 02:28:32.946 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.146387 @ 39775.65 | PnL:-178.5863 | 剩余仓位:0.000000
+2026-04-08 02:28:32.951 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.131471 @ 42124.02 | 杠杆:3x | 保证金:1846.04 | 强平价:28251.18
+2026-04-08 02:28:32.951 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.131471 @ 40776.04 | PnL:-179.9014 | 剩余仓位:0.000000
+2026-04-08 02:28:33.022 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.123225 @ 44051.09 | 杠杆:3x | 保证金:1809.39 | 强平价:58558.58
+2026-04-08 02:28:33.026 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.123225 @ 42410.58 | PnL:+199.5378 | 剩余仓位:0.000000
+2026-04-08 02:28:33.026 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.130957 @ 42410.58 | 杠杆:3x | 保证金:1851.31 | 强平价:28443.36
+2026-04-08 02:28:33.029 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.130957 @ 42173.26 | PnL:-33.8396 | 剩余仓位:0.000000
+2026-04-08 02:28:33.032 | INFO     | core.backtester:run:94 - 回测完成: 最终权益 9213.45, 收益率 -7.87%, 强平次数 0
+2026-04-08 02:28:33.795 | INFO     | __main__:main:96 - 策略: bollinger_bands | 标的: BTC/USDT:USDT | 区间: 2024-01-01 → 2024-12-31
+2026-04-08 02:28:33.798 | INFO     | core.exchange:__init__:50 - 交易账户已连接模拟盘(Demo Trading)
+2026-04-08 02:28:33.801 | INFO     | core.exchange:__init__:56 - 行情数据使用正式公开接口
+2026-04-08 02:28:33.801 | INFO     | core.data_feed:get_historical_data:33 - 从缓存加载: /Users/mi/Desktop/workspace/quant-dev/data/BTC_USDT:USDT_4h_2024-01-01_2024-12-31.parquet
+2026-04-08 02:28:33.917 | INFO     | core.backtester:run:34 - 回测开始: BTC/USDT:USDT | 1992 根K线 | 初始资金:10000.0 | 杠杆:3x | 资金费率:0.0100%/8h
+2026-04-08 02:28:33.919 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.134238 @ 44696.76 | 杠杆:3x | 保证金:2000.00 | 强平价:59416.89
+2026-04-08 02:28:33.919 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.134238 @ 46085.42 | PnL:-189.5036 | 剩余仓位:0.000000
+2026-04-08 02:28:33.944 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.090916 @ 64732.84 | 杠杆:3x | 保证金:1961.74 | 强平价:43414.16
+2026-04-08 02:28:33.945 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.090916 @ 61926.61 | PnL:-257.9454 | 剩余仓位:0.000000
+2026-04-08 02:28:33.948 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.082082 @ 69783.94 | 杠杆:3x | 保证金:1909.34 | 强平价:92766.12
+2026-04-08 02:28:33.953 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.082082 @ 66725.24 | PnL:+248.3257 | 剩余仓位:0.000000
+2026-04-08 02:28:33.953 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.088200 @ 66725.24 | 杠杆:3x | 保证金:1961.72 | 强平价:44750.40
+2026-04-08 02:28:33.957 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.088200 @ 70696.96 | PnL:+347.1876 | 剩余仓位:0.000000
+2026-04-08 02:28:33.957 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.086080 @ 70696.96 | 杠杆:3x | 保证金:2028.54 | 强平价:93979.82
+2026-04-08 02:28:33.960 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.086080 @ 66863.27 | PnL:+327.1270 | 剩余仓位:0.000000
+2026-04-08 02:28:33.960 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.093986 @ 66863.27 | 杠杆:3x | 保证金:2094.73 | 强平价:44842.97
+2026-04-08 02:28:33.961 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.093986 @ 64770.94 | PnL:-199.6927 | 剩余仓位:0.000000
+2026-04-08 02:28:33.967 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.092194 @ 66804.24 | 杠杆:3x | 保证金:2052.98 | 强平价:88805.10
+2026-04-08 02:28:33.971 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.092194 @ 62291.46 | PnL:+413.1790 | 剩余仓位:0.000000
+2026-04-08 02:28:33.972 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.104720 @ 61224.24 | 杠杆:3x | 保证金:2137.14 | 强平价:41061.06
+2026-04-08 02:28:33.972 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.104720 @ 59292.24 | PnL:-205.4240 | 剩余仓位:0.000000
+2026-04-08 02:28:33.982 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.097139 @ 64710.06 | 杠杆:3x | 保证金:2095.28 | 强平价:86021.23
+2026-04-08 02:28:33.983 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.097139 @ 67213.44 | PnL:-246.4398 | 剩余仓位:0.000000
+2026-04-08 02:28:33.998 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.090839 @ 67574.51 | 杠杆:3x | 保证金:2046.14 | 强平价:45319.97
+2026-04-08 02:28:34.000 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.090839 @ 65509.40 | PnL:-190.5688 | 剩余仓位:0.000000
+2026-04-08 02:28:34.010 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.095902 @ 62757.25 | 杠杆:3x | 保证金:2006.19 | 强平价:83425.30
+2026-04-08 02:28:34.012 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.095902 @ 60405.78 | PnL:+222.6143 | 剩余仓位:0.000000
+2026-04-08 02:28:34.012 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.101899 @ 60405.78 | 杠杆:3x | 保证金:2051.76 | 强平价:40512.14
+2026-04-08 02:28:34.012 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.101899 @ 58225.85 | PnL:-225.0981 | 剩余仓位:0.000000
+2026-04-08 02:28:34.019 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.100172 @ 60045.19 | 杠杆:3x | 保证金:2004.95 | 强平价:79820.07
+2026-04-08 02:28:34.019 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.100172 @ 62658.23 | PnL:-264.8914 | 剩余仓位:0.000000
+2026-04-08 02:28:34.026 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.091330 @ 64106.32 | 杠杆:3x | 保证金:1951.61 | 强平价:42993.97
+2026-04-08 02:28:34.027 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.091330 @ 67983.60 | PnL:+351.0073 | 剩余仓位:0.000000
+2026-04-08 02:28:34.028 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.087395 @ 69361.82 | 杠杆:3x | 保证金:2020.62 | 强平价:92204.99
+2026-04-08 02:28:34.030 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.087395 @ 64648.03 | PnL:+409.1368 | 剩余仓位:0.000000
+2026-04-08 02:28:34.031 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.100267 @ 62918.78 | 杠杆:3x | 保证金:2102.89 | 强平价:42197.53
+2026-04-08 02:28:34.032 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.100267 @ 60863.82 | PnL:-209.0958 | 剩余仓位:0.000000
+2026-04-08 02:28:34.036 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.100172 @ 61684.76 | 杠杆:3x | 保证金:2059.69 | 强平价:81999.61
+2026-04-08 02:28:34.040 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.100172 @ 57055.51 | PnL:+460.8622 | 剩余仓位:0.000000
+2026-04-08 02:28:34.048 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.108738 @ 59417.18 | 杠杆:3x | 保证金:2153.64 | 强平价:39849.12
+2026-04-08 02:28:34.051 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.108738 @ 57279.34 | PnL:-235.5795 | 剩余仓位:0.000000
+2026-04-08 02:28:34.058 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.105819 @ 59647.97 | 杠杆:3x | 保证金:2103.96 | 强平价:79292.03
+2026-04-08 02:28:34.061 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.105819 @ 61780.15 | PnL:-228.8941 | 剩余仓位:0.000000
+2026-04-08 02:28:34.069 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.097178 @ 63581.61 | 杠杆:3x | 保证金:2059.57 | 强平价:42642.07
+2026-04-08 02:28:34.069 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.097178 @ 60802.14 | PnL:-273.0578 | 剩余仓位:0.000000
+2026-04-08 02:28:34.073 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.094630 @ 63527.19 | 杠杆:3x | 保证金:2003.86 | 强平价:84448.81
+2026-04-08 02:28:34.075 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.094630 @ 60659.03 | PnL:+268.5439 | 剩余仓位:0.000000
+2026-04-08 02:28:34.075 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.101812 @ 60659.03 | 杠杆:3x | 保证金:2058.60 | 强平价:40681.99
+2026-04-08 02:28:34.078 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.101812 @ 64302.24 | PnL:+367.6472 | 剩余仓位:0.000000
+2026-04-08 02:28:34.078 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.098873 @ 64607.08 | 杠杆:3x | 保证金:2129.30 | 强平价:85884.34
+2026-04-08 02:28:34.079 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.098873 @ 66987.39 | PnL:-238.6614 | 剩余仓位:0.000000
+2026-04-08 02:28:34.115 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.067106 @ 93052.71 | 杠杆:3x | 保证金:2081.45 | 强平价:62407.35
+2026-04-08 02:28:34.123 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.067106 @ 103083.68 | PnL:+669.6760 | 剩余仓位:0.000000
+2026-04-08 02:28:34.123 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.064863 @ 102274.44 | 杠杆:3x | 保证金:2211.29 | 强平价:135956.82
+2026-04-08 02:28:34.127 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.064863 @ 95691.13 | PnL:+423.9124 | 剩余仓位:0.000000
+2026-04-08 02:28:34.134 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.068770 @ 100223.94 | 杠杆:3x | 保证金:2297.46 | 强平价:67216.86
+2026-04-08 02:28:34.134 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.068770 @ 97184.56 | PnL:-212.3596 | 剩余仓位:0.000000
+2026-04-08 02:28:34.160 | INFO     | core.backtester:run:94 - 回测完成: 最终权益 11270.12, 收益率 12.70%, 强平次数 0
+2026-04-08 02:28:35.006 | INFO     | __main__:main:96 - 策略: bollinger_bands | 标的: BTC/USDT:USDT | 区间: 2025-01-01 → 2025-12-31
+2026-04-08 02:28:35.009 | INFO     | core.exchange:__init__:50 - 交易账户已连接模拟盘(Demo Trading)
+2026-04-08 02:28:35.012 | INFO     | core.exchange:__init__:56 - 行情数据使用正式公开接口
+2026-04-08 02:28:35.012 | INFO     | core.data_feed:get_historical_data:33 - 从缓存加载: /Users/mi/Desktop/workspace/quant-dev/data/BTC_USDT:USDT_4h_2025-01-01_2025-12-31.parquet
+2026-04-08 02:28:35.086 | INFO     | core.backtester:run:34 - 回测开始: BTC/USDT:USDT | 1986 根K线 | 初始资金:10000.0 | 杠杆:3x | 资金费率:0.0100%/8h
+2026-04-08 02:28:35.094 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.063746 @ 94122.92 | 杠杆:3x | 保证金:2000.00 | 强平价:63125.11
+2026-04-08 02:28:35.095 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.063746 @ 98392.72 | PnL:+269.0482 | 剩余仓位:0.000000
+2026-04-08 02:28:35.095 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.062607 @ 98392.72 | 杠杆:3x | 保证金:2053.35 | 强平价:130796.72
+2026-04-08 02:28:35.098 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.062607 @ 93965.09 | PnL:+274.2582 | 剩余仓位:0.000000
+2026-04-08 02:28:35.098 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.067333 @ 93965.09 | 杠杆:3x | 保证金:2108.98 | 强平价:63019.25
+2026-04-08 02:28:35.099 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.067333 @ 89292.24 | PnL:-317.6431 | 剩余仓位:0.000000
+2026-04-08 02:28:35.102 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.065575 @ 93500.60 | 杠杆:3x | 保证金:2043.75 | 强平价:124293.46
+2026-04-08 02:28:35.103 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.065575 @ 85608.82 | PnL:+514.6932 | 剩余仓位:0.000000
+2026-04-08 02:28:35.107 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.077509 @ 83078.81 | 杠杆:3x | 保证金:2146.44 | 强平价:55718.19
+2026-04-08 02:28:35.108 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.077509 @ 80021.99 | PnL:-240.0313 | 剩余仓位:0.000000
+2026-04-08 02:28:35.114 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.072466 @ 86830.03 | 杠杆:3x | 保证金:2097.42 | 强平价:115426.05
+2026-04-08 02:28:35.119 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.072466 @ 84061.01 | PnL:+197.6149 | 剩余仓位:0.000000
+2026-04-08 02:28:35.119 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.076383 @ 84061.01 | 杠杆:3x | 保证金:2140.27 | 强平价:56376.92
+2026-04-08 02:28:35.123 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.076383 @ 86754.75 | PnL:+202.4421 | 剩余仓位:0.000000
+2026-04-08 02:28:35.123 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.075334 @ 86754.75 | 杠杆:3x | 保证金:2178.53 | 强平价:115325.98
+2026-04-08 02:28:35.126 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.075334 @ 79627.22 | PnL:+533.9470 | 剩余仓位:0.000000
+2026-04-08 02:28:35.126 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.087401 @ 78435.58 | 杠杆:3x | 保证金:2285.11 | 强平价:52604.13
+2026-04-08 02:28:35.126 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.087401 @ 75104.48 | PnL:-294.4237 | 剩余仓位:0.000000
+2026-04-08 02:28:35.135 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.076563 @ 87199.36 | 杠杆:3x | 保证金:2225.41 | 强平价:115917.01
+2026-04-08 02:28:35.136 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.076563 @ 90949.99 | PnL:-290.6405 | 剩余仓位:0.000000
+2026-04-08 02:28:35.160 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.061589 @ 105569.51 | 杠杆:3x | 保证金:2167.29 | 强平价:70801.95
+2026-04-08 02:28:35.164 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.061589 @ 101855.92 | PnL:-231.8510 | 剩余仓位:0.000000
+2026-04-08 02:28:35.167 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.059000 @ 107678.46 | 杠杆:3x | 保证金:2117.69 | 强平价:143140.57
+2026-04-08 02:28:35.169 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.059000 @ 104255.15 | PnL:+198.9009 | 剩余仓位:0.000000
+2026-04-08 02:28:35.169 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.062129 @ 104255.15 | 杠杆:3x | 保证金:2159.10 | 强平价:69920.45
+2026-04-08 02:28:35.172 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.062129 @ 108574.88 | PnL:+265.0094 | 剩余仓位:0.000000
+2026-04-08 02:28:35.172 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.061066 @ 108574.88 | 杠杆:3x | 保证金:2210.09 | 强平价:144332.21
+2026-04-08 02:28:35.175 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.061066 @ 102238.04 | PnL:+383.8466 | 剩余仓位:0.000000
+2026-04-08 02:28:35.175 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.067139 @ 102238.04 | 杠杆:3x | 保证金:2288.05 | 强平价:68567.65
+2026-04-08 02:28:35.176 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.067139 @ 98826.73 | PnL:-232.3492 | 剩余仓位:0.000000
+2026-04-08 02:28:35.181 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.061978 @ 108406.41 | 杠杆:3x | 保证金:2239.61 | 强平价:144108.26
+2026-04-08 02:28:35.182 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.061978 @ 105356.87 | PnL:+185.7405 | 剩余仓位:0.000000
+2026-04-08 02:28:35.182 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.064863 @ 105356.87 | 杠杆:3x | 保证金:2277.93 | 强平价:70659.34
+2026-04-08 02:28:35.183 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.064863 @ 109608.07 | PnL:+272.1926 | 剩余仓位:0.000000
+2026-04-08 02:28:35.183 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.063810 @ 109608.07 | 杠杆:3x | 保证金:2331.35 | 强平价:145705.67
+2026-04-08 02:28:35.188 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.063810 @ 113248.75 | PnL:-235.9232 | 剩余仓位:0.000000
+2026-04-08 02:28:35.197 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.059396 @ 115453.29 | 杠杆:3x | 保证金:2285.81 | 强平价:77430.67
+2026-04-08 02:28:35.206 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.059396 @ 117389.72 | PnL:+111.5294 | 剩余仓位:0.000000
+2026-04-08 02:28:35.206 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.058849 @ 117389.72 | 杠杆:3x | 保证金:2302.75 | 强平价:156050.06
+2026-04-08 02:28:35.208 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.058849 @ 121730.34 | PnL:-259.0225 | 剩余仓位:0.000000
+2026-04-08 02:28:35.213 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.058570 @ 115280.45 | 杠杆:3x | 保证金:2250.66 | 强平价:77314.76
+2026-04-08 02:28:35.234 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.058570 @ 111443.71 | PnL:-227.9817 | 剩余仓位:0.000000
+2026-04-08 02:28:35.245 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.057768 @ 114324.23 | 杠杆:3x | 保证金:2201.44 | 强平价:151975.01
+2026-04-08 02:28:35.253 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.057768 @ 112481.79 | PnL:+103.1857 | 剩余仓位:0.000000
+2026-04-08 02:28:35.253 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.059389 @ 112481.79 | 杠杆:3x | 保证金:2226.74 | 强平价:75437.79
+2026-04-08 02:28:35.255 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.059389 @ 108917.81 | PnL:-214.8968 | 剩余仓位:0.000000
+2026-04-08 02:28:35.258 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.057519 @ 113746.15 | 杠杆:3x | 保证金:2180.85 | 强平价:151206.54
+2026-04-08 02:28:35.259 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.057519 @ 117387.27 | PnL:-212.8092 | 剩余仓位:0.000000
+2026-04-08 02:28:35.266 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.055010 @ 116619.22 | 杠杆:3x | 保证金:2138.42 | 强平价:78212.62
+2026-04-08 02:28:35.266 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.055010 @ 112753.54 | PnL:-215.7534 | 剩余仓位:0.000000
+2026-04-08 02:28:35.273 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.055429 @ 113361.82 | 杠杆:3x | 保证金:2094.51 | 强平价:150695.65
+2026-04-08 02:28:35.278 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.055429 @ 109994.99 | PnL:+183.5710 | 剩余仓位:0.000000
+2026-04-08 02:28:35.278 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.058214 @ 109994.99 | 杠杆:3x | 保证金:2134.41 | 强平价:73769.98
+2026-04-08 02:28:35.279 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.058214 @ 106463.80 | PnL:-208.6634 | 剩余仓位:0.000000
+2026-04-08 02:28:35.286 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.059206 @ 105954.00 | 杠杆:3x | 保证金:2091.05 | 强平价:140848.19
+2026-04-08 02:28:35.288 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.059206 @ 98649.23 | PnL:+429.5699 | 剩余仓位:0.000000
+2026-04-08 02:28:35.288 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.067278 @ 97105.82 | 杠杆:3x | 保证金:2177.69 | 强平价:65125.63
+2026-04-08 02:28:35.290 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.067278 @ 93973.40 | PnL:-213.9035 | 剩余仓位:0.000000
+2026-04-08 02:28:35.296 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.070791 @ 90407.71 | 杠杆:3x | 保证金:2133.36 | 强平价:120181.99
+2026-04-08 02:28:35.300 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.070791 @ 86339.26 | PnL:+284.9543 | 剩余仓位:0.000000
+2026-04-08 02:28:35.300 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.076168 @ 86339.26 | 杠杆:3x | 保证金:2192.11 | 强平价:57904.87
+2026-04-08 02:28:35.301 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.076168 @ 91840.73 | PnL:+415.5402 | 剩余仓位:0.000000
+2026-04-08 02:28:35.305 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.072743 @ 93743.15 | 杠杆:3x | 保证金:2273.04 | 强平价:124615.89
+2026-04-08 02:28:35.309 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.072743 @ 88132.22 | PnL:+404.9479 | 剩余仓位:0.000000
+2026-04-08 02:28:35.309 | INFO     | core.portfolio:_open_long:113 - [开多] BTC/USDT:USDT 0.081221 @ 87001.90 | 杠杆:3x | 保证金:2355.46 | 强平价:58349.27
+2026-04-08 02:28:35.314 | INFO     | core.portfolio:_close_position:164 - [平多] BTC/USDT:USDT 0.081221 @ 89890.02 | PnL:+230.9257 | 剩余仓位:0.000000
+2026-04-08 02:28:35.314 | INFO     | core.portfolio:_open_short:141 - [开空] BTC/USDT:USDT 0.080068 @ 89890.02 | 杠杆:3x | 保证金:2399.12 | 强平价:119493.80
+2026-04-08 02:28:35.320 | INFO     | core.portfolio:_close_position:164 - [平空] BTC/USDT:USDT 0.080068 @ 88434.18 | PnL:+113.0260 | 剩余仓位:0.000000
+2026-04-08 02:28:35.322 | INFO     | core.backtester:run:94 - 回测完成: 最终权益 12123.14, 收益率 21.23%, 强平次数 0
