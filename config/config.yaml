@@ -14,10 +14,10 @@ exchange:
 trading:
   symbols:           # 永续合约交易对（OKX 格式：BTC/USDT:USDT）
     - BTC/USDT:USDT
-    - ETH/USDT:USDT
+    - XRP/USDT:USDT
   timeframe: 4h      # 时间周期: 1m 5m 15m 1h 4h 1d
   base_currency: USDT
-  leverage: 3        # 杠杆倍数（建议 2~5，模拟盘测试用）
+  leverage: 5        # 杠杆倍数
   margin_mode: isolated  # isolated=逐仓, cross=全仓
 
 risk:

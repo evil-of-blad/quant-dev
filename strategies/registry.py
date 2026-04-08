@@ -6,6 +6,7 @@ from .rsi_strategy import RSIStrategy
 from .bollinger_bands import BollingerBandsStrategy
 from .combo import ComboStrategy
 from .adaptive import AdaptiveStrategy
+from .td_sequential import TDSequentialStrategy
 
 STRATEGY_REGISTRY = {
     "ma_crossover": MACrossoverStrategy,
@@ -13,6 +14,7 @@ STRATEGY_REGISTRY = {
     "bollinger_bands": BollingerBandsStrategy,
     "combo": ComboStrategy,
     "adaptive": AdaptiveStrategy,
+    "td_sequential": TDSequentialStrategy,
 }
 
 

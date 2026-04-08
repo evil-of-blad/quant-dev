@@ -8,6 +8,7 @@ from core.exchange import AsyncExchange
 from core.data_feed import add_indicators
 from core.risk import RiskManager
 from core.notifier import TelegramNotifier
+from core.bot_commands import TelegramBot
 from strategies.base import BaseStrategy
 
 
@@ -23,6 +24,7 @@ class LiveTrader:
         self.exchange = AsyncExchange(config)
         self.risk = RiskManager(config)
         self.notifier = TelegramNotifier(config)
+        self.bot = TelegramBot(config, self)
 
         t_cfg = config["trading"]
         self.symbols: list[str] = t_cfg["symbols"]
@@ -58,7 +60,13 @@ class LiveTrader:
         await self.notifier.notify_startup(self.strategy.name, self.symbols, self.leverage, equity)
 
         self._running = True
-        await self._main_loop()
+
+        # 启动 Telegram Bot 指令监听（后台）
+        bot_task = asyncio.create_task(self.bot.start_polling())
+        try:
+            await self._main_loop()
+        finally:
+            bot_task.cancel()
 
     async def stop(self):
         self._running = False
@@ -201,6 +209,7 @@ class LiveTrader:
                 pnl = (pos["avg_price"] - filled) * pos["amount"] * self.leverage
             self._positions.pop(symbol, None)
             self.risk.reset_trailing(symbol)
+            self.bot.record_trade(symbol, pos["direction"], pnl, reason)
             logger.success(f"[平仓] {symbol} @ {filled:.2f} | PnL:{pnl:+.2f} | 原因:{reason}")
             return pnl
         except Exception as e:
