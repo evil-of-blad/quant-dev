@@ -36,12 +36,18 @@ class LiveTrader:
 
     async def start(self):
         await self.exchange.init()
-        # 初始化杠杆
+
+        # 设置保证金模式 + 杠杆
         for symbol in self.symbols:
+            await self.exchange.set_margin_mode(symbol, self.margin_mode)
             await self.exchange.set_leverage(symbol, self.leverage, self.margin_mode)
+
+        # 加载市场信息，获取下单精度
+        self._markets = self.exchange.public.markets if hasattr(self.exchange, 'public') else {}
+
         logger.info(
             f"实盘启动 | 策略:{self.strategy.name} | 标的:{self.symbols} "
-            f"| 杠杆:{self.leverage}x | 周期:{self.timeframe}"
+            f"| 杠杆:{self.leverage}x | 保证金:{self.margin_mode} | 周期:{self.timeframe}"
         )
         self._running = True
         await self._main_loop()
@@ -119,14 +125,37 @@ class LiveTrader:
         except Exception as e:
             logger.error("处理 " + symbol + " 异常: " + str(e), exc_info=True)
 
+    def _truncate_amount(self, symbol: str, amount: float) -> float:
+        """按交易所精度截断下单量"""
+        market = self._markets.get(symbol, {})
+        min_amount = market.get("limits", {}).get("amount", {}).get("min", 0.01)
+        precision = market.get("precision", {}).get("amount", 0.0001)
+
+        if isinstance(precision, int):
+            # 精度为小数位数
+            factor = 10 ** precision
+            amount = int(amount * factor) / factor
+        else:
+            # 精度为最小步长
+            amount = int(amount / precision) * precision
+
+        if amount < min_amount:
+            logger.warning(f"下单量 {amount} 小于最小值 {min_amount}，跳过")
+            return 0.0
+        return amount
+
     async def _open_position(self, symbol: str, direction: str, amount: float, price: float):
+        amount = self._truncate_amount(symbol, amount)
+        if amount <= 0:
+            return
         side = "buy" if direction == "long" else "sell"
         try:
             result = await self.exchange.create_market_order(symbol, side, amount)
             filled = result.get("average", price) or price
-            self._positions[symbol] = {"direction": direction, "amount": amount, "avg_price": filled}
+            filled_amount = result.get("filled", amount) or amount
+            self._positions[symbol] = {"direction": direction, "amount": filled_amount, "avg_price": filled}
             self.risk.reset_trailing(symbol)
-            logger.success(f"[开{('多' if direction=='long' else '空')}] {symbol} {amount:.6f} @ {filled:.4f} | {self.leverage}x")
+            logger.success(f"[开{('多' if direction=='long' else '空')}] {symbol} {filled_amount:.4f} @ {filled:.2f} | {self.leverage}x {self.margin_mode}")
         except Exception as e:
             logger.error("开仓失败 " + symbol + ": " + str(e))
 
