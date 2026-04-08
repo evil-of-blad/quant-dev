@@ -61,6 +61,12 @@ strategy:
     bb_std: 2.0
     rsi_oversold: 35
 
+telegram:
+  enabled: false              # 改成 true 开启通知
+  bot_token: ""               # BotFather 给你的 token
+  chat_id: ""                 # 你的 Telegram chat_id
+  status_interval: 6          # 每 N 次tick播报一次状态（6=每24h）
+
 logging:
   level: INFO
   file: logs/quant.log

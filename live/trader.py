@@ -1,5 +1,5 @@
 """
-实盘交易引擎（合约版）— 异步轮询，支持多空双向
+实盘交易引擎（合约版）— 异步轮询，支持多空双向，Telegram 通知
 """
 import asyncio
 from datetime import datetime
@@ -7,7 +7,7 @@ from loguru import logger
 from core.exchange import AsyncExchange
 from core.data_feed import add_indicators
 from core.risk import RiskManager
-from core.order import Order, OrderSide, OrderType
+from core.notifier import TelegramNotifier
 from strategies.base import BaseStrategy
 
 
@@ -22,6 +22,7 @@ class LiveTrader:
         self.strategy = strategy
         self.exchange = AsyncExchange(config)
         self.risk = RiskManager(config)
+        self.notifier = TelegramNotifier(config)
 
         t_cfg = config["trading"]
         self.symbols: list[str] = t_cfg["symbols"]
@@ -30,25 +31,32 @@ class LiveTrader:
         self.margin_mode: str = t_cfg.get("margin_mode", "isolated")
         self.poll_interval: int = self.TIMEFRAME_SECONDS.get(self.timeframe, 14400)
 
+        # 每 N 次 tick 播报一次状态（默认每6次=24h）
+        self._status_interval: int = config.get("telegram", {}).get("status_interval", 6)
+        self._tick_count: int = 0
+
         self._running = False
-        # symbol → {direction, amount, avg_price}
         self._positions: dict[str, dict] = {}
 
     async def start(self):
         await self.exchange.init()
 
-        # 设置保证金模式 + 杠杆
         for symbol in self.symbols:
             await self.exchange.set_margin_mode(symbol, self.margin_mode)
             await self.exchange.set_leverage(symbol, self.leverage, self.margin_mode)
 
-        # 加载市场信息，获取下单精度
         self._markets = self.exchange.public.markets if hasattr(self.exchange, 'public') else {}
 
         logger.info(
             f"实盘启动 | 策略:{self.strategy.name} | 标的:{self.symbols} "
             f"| 杠杆:{self.leverage}x | 保证金:{self.margin_mode} | 周期:{self.timeframe}"
         )
+
+        # 启动通知
+        balance = await self.exchange.fetch_balance()
+        equity = balance.get("USDT", {}).get("total", 0) or 0
+        await self.notifier.notify_startup(self.strategy.name, self.symbols, self.leverage, equity)
+
         self._running = True
         await self._main_loop()
 
@@ -65,6 +73,7 @@ class LiveTrader:
                 break
             except Exception as e:
                 logger.error("主循环异常: " + str(e), exc_info=True)
+                await self.notifier.notify_error(str(e))
             await asyncio.sleep(self.poll_interval)
 
     async def _tick(self):
@@ -73,8 +82,24 @@ class LiveTrader:
         equity = self._estimate_equity(usdt_free)
         logger.info(f"[{datetime.utcnow().strftime('%H:%M:%S')}] 可用:{usdt_free:.2f} USDT | 估算权益:{equity:.2f}")
 
+        # 定时状态播报
+        self._tick_count += 1
+        if self._tick_count % self._status_interval == 0:
+            prices = {}
+            for symbol in self.symbols:
+                try:
+                    ticker = await self.exchange.fetch_ticker(symbol)
+                    prices[symbol] = ticker.get("last", 0)
+                except Exception:
+                    pass
+            await self.notifier.notify_status(equity, usdt_free, self._positions, prices)
+
+        # 熔断检查
         if self.risk.check_drawdown(equity):
             logger.warning("熔断触发，跳过信号")
+            dd = (self.risk._peak_equity - equity) / self.risk._peak_equity if self.risk._peak_equity > 0 else 0
+            if self.risk._cooldown_counter == self.risk.cooldown_bars - 1:
+                await self.notifier.notify_circuit_breaker(equity, dd)
             return
 
         for symbol in self.symbols:
@@ -87,24 +112,26 @@ class LiveTrader:
             current_price = float(df["close"].iloc[-1])
             pos = self._positions.get(symbol)
 
-            # 获取 ATR（用于动态止损）
             atr = float(df["atr_14"].iloc[-1]) if "atr_14" in df.columns else 0.0
 
             # 止损/止盈检查
             if pos and pos["amount"] > 1e-9:
                 direction = pos["direction"]
                 if self.risk.check_stop_loss(pos["avg_price"], current_price, direction, atr):
-                    await self._close_position(symbol, pos, current_price, "止损")
+                    pnl = await self._close_position(symbol, pos, current_price, "止损")
+                    await self.notifier.notify_stop_loss(symbol, direction, current_price, pnl)
                     return
                 if self.risk.check_take_profit(pos["avg_price"], current_price, direction, symbol):
-                    await self._close_position(symbol, pos, current_price, "移动止盈")
+                    pnl = await self._close_position(symbol, pos, current_price, "移动止盈")
+                    await self.notifier.notify_trailing_stop(symbol, direction, current_price, pnl)
                     return
 
             signal = self.strategy.generate_signal(df, symbol)
 
             if signal == 1:
                 if pos and pos["direction"] == "short":
-                    await self._close_position(symbol, pos, current_price, "反手做多")
+                    pnl = await self._close_position(symbol, pos, current_price, "反手做多")
+                    await self.notifier.notify_close(symbol, "short", current_price, pnl, "反手做多")
                 if not self._positions.get(symbol):
                     stop = self.risk.calc_stop_price(current_price, "long", atr)
                     size = self.risk.calc_position_size(equity, current_price, stop)
@@ -114,7 +141,8 @@ class LiveTrader:
 
             elif signal == -1:
                 if pos and pos["direction"] == "long":
-                    await self._close_position(symbol, pos, current_price, "反手做空")
+                    pnl = await self._close_position(symbol, pos, current_price, "反手做空")
+                    await self.notifier.notify_close(symbol, "long", current_price, pnl, "反手做空")
                 if not self._positions.get(symbol):
                     stop = self.risk.calc_stop_price(current_price, "short", atr)
                     size = self.risk.calc_position_size(equity, current_price, stop)
@@ -124,19 +152,17 @@ class LiveTrader:
 
         except Exception as e:
             logger.error("处理 " + symbol + " 异常: " + str(e), exc_info=True)
+            await self.notifier.notify_error(f"{symbol}: {e}")
 
     def _truncate_amount(self, symbol: str, amount: float) -> float:
-        """按交易所精度截断下单量"""
         market = self._markets.get(symbol, {})
         min_amount = market.get("limits", {}).get("amount", {}).get("min", 0.01)
         precision = market.get("precision", {}).get("amount", 0.0001)
 
         if isinstance(precision, int):
-            # 精度为小数位数
             factor = 10 ** precision
             amount = int(amount * factor) / factor
         else:
-            # 精度为最小步长
             amount = int(amount / precision) * precision
 
         if amount < min_amount:
@@ -153,13 +179,18 @@ class LiveTrader:
             result = await self.exchange.create_market_order(symbol, side, amount)
             filled = result.get("average", price) or price
             filled_amount = result.get("filled", amount) or amount
+            margin = filled * filled_amount / self.leverage
             self._positions[symbol] = {"direction": direction, "amount": filled_amount, "avg_price": filled}
             self.risk.reset_trailing(symbol)
             logger.success(f"[开{('多' if direction=='long' else '空')}] {symbol} {filled_amount:.4f} @ {filled:.2f} | {self.leverage}x {self.margin_mode}")
+
+            await self.notifier.notify_open(symbol, direction, filled_amount, filled, self.leverage, margin)
         except Exception as e:
             logger.error("开仓失败 " + symbol + ": " + str(e))
+            await self.notifier.notify_error(f"开仓失败 {symbol}: {e}")
 
-    async def _close_position(self, symbol: str, pos: dict, price: float, reason: str):
+    async def _close_position(self, symbol: str, pos: dict, price: float, reason: str) -> float:
+        """平仓，返回 PnL"""
         side = "sell" if pos["direction"] == "long" else "buy"
         try:
             result = await self.exchange.create_market_order(symbol, side, pos["amount"])
@@ -170,9 +201,12 @@ class LiveTrader:
                 pnl = (pos["avg_price"] - filled) * pos["amount"] * self.leverage
             self._positions.pop(symbol, None)
             self.risk.reset_trailing(symbol)
-            logger.success(f"[平仓] {symbol} @ {filled:.4f} | PnL:{pnl:+.4f} | 原因:{reason}")
+            logger.success(f"[平仓] {symbol} @ {filled:.2f} | PnL:{pnl:+.2f} | 原因:{reason}")
+            return pnl
         except Exception as e:
             logger.error("平仓失败 " + symbol + ": " + str(e))
+            await self.notifier.notify_error(f"平仓失败 {symbol}: {e}")
+            return 0.0
 
     def _estimate_equity(self, usdt_free: float) -> float:
         pos_margin = sum(
