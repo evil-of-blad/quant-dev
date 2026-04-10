@@ -101,48 +101,95 @@ class TelegramBot:
             await self._send(f"未知指令: <code>{cmd}</code>\n发送 /help 查看可用指令")
 
     # ------------------------------------------------------------------
-    # /status
+    # /status — 跨策略全局视图
     # ------------------------------------------------------------------
     async def _cmd_status(self):
         try:
-            balance = await self.trader.exchange.fetch_balance()
-            usdt_free = balance.get("USDT", {}).get("free", 0) or 0
-            usdt_total = balance.get("USDT", {}).get("total", 0) or 0
+            ex = self.trader.exchange
+            balance = await ex.fetch_balance()
+            usdt = balance.get("USDT", {})
+            free = usdt.get("free", 0) or 0
+            total = usdt.get("total", 0) or 0
 
-            pos_lines = ""
-            positions = self.trader._positions
-            if positions:
-                for sym, pos in positions.items():
-                    try:
-                        ticker = await self.trader.exchange.fetch_ticker(sym)
-                        price = ticker.get("last", pos["avg_price"])
-                    except Exception:
-                        price = pos["avg_price"]
+            # 策略对应的标的列表
+            cfg = self.trader.config
+            bb_symbols = cfg.get("trading", {}).get("symbols", [])
+            arb_symbols = cfg.get("funding_arb", {}).get("symbols", [])
+            grid_symbol = cfg.get("grid", {}).get("symbol")
 
-                    if pos["direction"] == "long":
-                        pnl = (price - pos["avg_price"]) * pos["amount"] * self.trader.leverage
-                    else:
-                        pnl = (pos["avg_price"] - price) * pos["amount"] * self.trader.leverage
+            # 拉取所有合约持仓（一次拉完）
+            try:
+                all_positions = await ex.client.fetch_positions(None)
+            except Exception:
+                all_positions = []
 
-                    margin = pos["amount"] * pos["avg_price"] / self.trader.leverage
-                    emoji = "📈" if pnl >= 0 else "📉"
-                    pos_lines += (
-                        f"\n{emoji} <b>{sym}</b>"
-                        f"\n   方向: {'多' if pos['direction'] == 'long' else '空'} | 杠杆: {self.trader.leverage}x"
-                        f"\n   数量: <code>{pos['amount']:.4f}</code>"
-                        f"\n   开仓价: <code>{pos['avg_price']:.2f}</code> | 现价: <code>{price:.2f}</code>"
-                        f"\n   保证金: <code>{margin:.2f}</code> | 浮动盈亏: <code>{pnl:+.2f}</code>"
-                        f"\n"
-                    )
+            # 按 symbol 整理
+            pos_map = {}
+            for p in all_positions:
+                sym = p.get("symbol")
+                contracts = float(p.get("contracts", 0) or 0)
+                if contracts < 1e-9:
+                    continue
+                pos_map[sym] = {
+                    "side": p.get("side"),
+                    "contracts": contracts,
+                    "entry": float(p.get("entryPrice", 0) or 0),
+                    "leverage": int(float(p.get("leverage", 1) or 1)),
+                    "upnl": float(p.get("unrealizedPnl", 0) or 0),
+                }
+
+            def fmt_pos(sym):
+                p = pos_map.get(sym)
+                if not p:
+                    return f"  ⚪ {sym}: 空仓"
+                emoji = "📈" if p["upnl"] >= 0 else "📉"
+                d = "多" if p["side"] == "long" else "空"
+                return (
+                    f"  {emoji} {sym}\n"
+                    f"     {d} {p['contracts']} 张 @ {p['entry']:.4f}\n"
+                    f"     {p['leverage']}x | 浮盈 {p['upnl']:+.2f}"
+                )
+
+            # 布林带
+            bb_lines = "\n".join(fmt_pos(s) for s in bb_symbols) or "  无配置"
+
+            # 套利（合约空单 + 现货多单）
+            arb_lines_list = []
+            for s in arb_symbols:
+                base = s.split("/")[0]
+                spot = balance.get(base, {}).get("total", 0) or 0
+                p = pos_map.get(s)
+                if p or spot > 0:
+                    swap_str = ""
+                    if p:
+                        d = "空" if p["side"] == "short" else "多"
+                        swap_str = f"{d}{p['contracts']}张 浮盈{p['upnl']:+.2f}"
+                    spot_str = f"现货 {spot:.4f}" if spot > 0 else ""
+                    arb_lines_list.append(f"  💰 {s}\n     {swap_str} | {spot_str}")
+                else:
+                    arb_lines_list.append(f"  ⚪ {s}: 空仓")
+            arb_lines = "\n".join(arb_lines_list) or "  无配置"
+
+            # 网格
+            if grid_symbol:
+                grid_lines = fmt_pos(grid_symbol)
+                # 加上挂单数
+                try:
+                    open_orders = await ex.client.fetch_open_orders(grid_symbol)
+                    grid_lines += f"\n     挂单: {len(open_orders)} 个"
+                except Exception:
+                    pass
             else:
-                pos_lines = "\n空仓，等待信号中..."
+                grid_lines = "  无配置"
 
             msg = (
-                f"📊 <b>账户状态</b>\n"
+                f"📊 <b>全策略账户状态</b>\n"
                 f"━━━━━━━━━━━━━━━\n"
-                f"可用余额: <code>{usdt_free:.2f} USDT</code>\n"
-                f"账户总额: <code>{usdt_total:.2f} USDT</code>\n"
-                f"\n<b>当前持仓:</b>{pos_lines}"
+                f"账户总额: <code>{total:.2f} USDT</code>\n"
+                f"可用余额: <code>{free:.2f} USDT</code>\n\n"
+                f"<b>布林带 (BTC/XRP):</b>\n{bb_lines}\n\n"
+                f"<b>费率套利:</b>\n{arb_lines}\n\n"
+                f"<b>网格交易:</b>\n{grid_lines}"
             )
             await self._send(msg)
         except Exception as e:
