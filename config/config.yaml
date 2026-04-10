@@ -61,6 +61,21 @@ strategy:
     bb_std: 2.0
     rsi_oversold: 35
 
+# =============================================
+# 资金费率套利配置
+# =============================================
+funding_arb:
+  symbols:                     # 套利标的（选费率高且流动性好的）
+    - ETH/USDT:USDT
+    - SOL/USDT:USDT
+    - DOGE/USDT:USDT
+  capital: 800.0               # 套利总资金 (USDT)
+  per_symbol_pct: 0.3          # 每个标的占用资金比例 (30%)
+  entry_rate: 0.0005           # 费率 > 0.05% 时开仓
+  exit_rate: 0.0001            # 费率 < 0.01% 时平仓
+  leverage: 1                  # 合约端杠杆（套利建议 1x）
+  check_interval: 3600         # 检查间隔（秒），1小时
+
 telegram:
   enabled: false              # 改成 true 开启通知
   bot_token: ""               # BotFather 给你的 token

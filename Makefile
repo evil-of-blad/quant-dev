@@ -47,6 +47,22 @@ status:
 restart:
 	bash scripts/start.sh restart
 
+# ---------- 费率套利 ----------
+arb-start:
+	bash scripts/start_arb.sh start
+
+arb-stop:
+	bash scripts/start_arb.sh stop
+
+arb-status:
+	bash scripts/start_arb.sh status
+
+arb-restart:
+	bash scripts/start_arb.sh restart
+
+arb-log:
+	tail -f logs/funding_arb.log
+
 # ---------- 日志 ----------
 log:
 	tail -f logs/quant.log
@@ -69,4 +85,5 @@ service-log:
 
 .PHONY: install backtest backtest-2024 backtest-2025 backtest-all optimize live \
         start stop status restart log \
+        arb-start arb-stop arb-status arb-restart arb-log \
         service-install service-start service-stop service-status service-log
