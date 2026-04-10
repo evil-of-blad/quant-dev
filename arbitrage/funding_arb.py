@@ -50,9 +50,14 @@ class FundingArbTrader:
     async def start(self):
         await self.exchange.init()
 
-        # 套利用1x杠杆
+        # 套利用1x杠杆，每个标的都校验
+        self._lev_ok: dict[str, bool] = {}
         for symbol in self.symbols:
-            await self.exchange.set_leverage(symbol, self.leverage, "isolated")
+            await self.exchange.set_margin_mode(symbol, "isolated")
+            ok = await self.exchange.set_leverage(symbol, self.leverage, "isolated")
+            self._lev_ok[symbol] = ok
+            if not ok:
+                logger.warning(f"[费率套利] {symbol} 杠杆配置异常，将跳过该标的")
 
         # ★ 启动时仓位同步：从交易所拉取真实持仓，重建内存状态
         await self._reconcile_positions()
@@ -189,6 +194,10 @@ class FundingArbTrader:
                 logger.error(f"[费率套利] {symbol} 处理失败: " + str(e))
 
     async def _process_symbol(self, symbol: str):
+        # 杠杆配置异常的标的直接跳过
+        if not self._lev_ok.get(symbol, True):
+            return
+
         # 获取当前资金费率
         funding = await self._fetch_funding_rate(symbol)
         if funding is None:
@@ -233,11 +242,17 @@ class FundingArbTrader:
     async def _open_arb(self, symbol: str, spot_symbol: str, rate: float):
         """
         开套利仓位（原子化）:
-        1. 先尝试合约空单（容易因杠杆/数量限制失败）
-        2. 合约成功后再买现货
-        3. 现货失败则立刻平掉合约空单回滚
+        1. 校验杠杆
+        2. 先尝试合约空单（容易因杠杆/数量限制失败）
+        3. 合约成功后再买现货
+        4. 现货失败则立刻平掉合约空单回滚
         """
         per_capital = self.capital * self.per_symbol_pct
+
+        # 下单前校验杠杆
+        if not await self.exchange.ensure_leverage(symbol, self.leverage, "isolated"):
+            logger.warning(f"[费率套利] {symbol} 杠杆校验失败，跳过本次开仓")
+            return
 
         try:
             ticker = await self.exchange.fetch_ticker(symbol)

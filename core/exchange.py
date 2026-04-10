@@ -175,12 +175,74 @@ class AsyncExchange:
             else:
                 logger.warning("设置保证金模式失败: " + str(e))
 
-    async def set_leverage(self, symbol: str, leverage: int, margin_mode: str = "isolated"):
-        try:
-            await self.client.set_leverage(leverage, symbol, params={"mgnMode": margin_mode})
+    async def set_leverage(self, symbol: str, leverage: int, margin_mode: str = "isolated") -> bool:
+        """
+        设置杠杆。OKX 在 buy/sell 单向持仓模式下需要分别设置 long 和 short 两个方向。
+        返回 True=成功，False=失败。
+        """
+        success = True
+        # OKX 单向持仓模式需要分别设置多空两个方向
+        for pos_side in ["long", "short"]:
+            try:
+                await self.client.set_leverage(
+                    leverage, symbol,
+                    params={"mgnMode": margin_mode, "posSide": pos_side}
+                )
+            except Exception as e:
+                err = str(e)
+                # 兼容非 OKX 或不要 posSide 的情况
+                if "posSide" in err or "Parameter" in err:
+                    try:
+                        await self.client.set_leverage(leverage, symbol, params={"mgnMode": margin_mode})
+                        break
+                    except Exception as e2:
+                        logger.warning(f"设置杠杆失败 {symbol} {leverage}x: " + str(e2))
+                        success = False
+                        break
+                else:
+                    logger.warning(f"设置杠杆失败 {symbol} {pos_side} {leverage}x: " + err)
+                    success = False
+                    break
+
+        if success:
             logger.info(f"杠杆设置: {symbol} {leverage}x ({margin_mode})")
+
+        # 验证：拉取实际杠杆确认
+        actual = await self.get_leverage(symbol)
+        if actual and actual != leverage:
+            logger.warning(f"杠杆校验失败 {symbol}: 期望 {leverage}x, 实际 {actual}x")
+            return False
+        return success
+
+    async def get_leverage(self, symbol: str) -> int:
+        """从交易所拉取当前实际杠杆"""
+        try:
+            positions = await self.client.fetch_positions([symbol])
+            for p in positions:
+                if p.get("symbol") == symbol:
+                    lev = p.get("leverage")
+                    if lev:
+                        return int(lev)
+            return None
         except Exception as e:
-            logger.warning("设置杠杆失败（可能已设置）: " + str(e))
+            logger.debug(f"获取杠杆失败 {symbol}: {e}")
+            return None
+
+    async def ensure_leverage(self, symbol: str, leverage: int, margin_mode: str = "isolated") -> bool:
+        """
+        确保杠杆是期望值，不对就尝试设置。
+        在每次下单前调用，避免 OKX 默认杠杆覆盖问题。
+        返回 True=杠杆正确可下单，False=设置失败，应跳过
+        """
+        try:
+            actual = await self.get_leverage(symbol)
+            if actual == leverage:
+                return True
+            logger.info(f"[杠杆校验] {symbol} 实际:{actual}x 期望:{leverage}x，重新设置...")
+            return await self.set_leverage(symbol, leverage, margin_mode)
+        except Exception as e:
+            logger.warning(f"[杠杆校验] {symbol} 异常: {e}")
+            return False
 
     async def fetch_balance(self) -> dict:
         return await self.client.fetch_balance()

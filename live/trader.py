@@ -220,6 +220,13 @@ class LiveTrader:
         amount = self._truncate_amount(symbol, amount)
         if amount <= 0:
             return
+
+        # 下单前校验杠杆
+        if not await self.exchange.ensure_leverage(symbol, self.leverage, self.margin_mode):
+            logger.warning(f"[开仓拒绝] {symbol} 杠杆校验失败，跳过本次开仓")
+            await self.notifier.notify_error(f"{symbol} 杠杆配置异常，跳过开仓")
+            return
+
         side = "buy" if direction == "long" else "sell"
         try:
             result = await self.exchange.create_market_order(symbol, side, amount)
