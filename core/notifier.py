@@ -15,27 +15,38 @@ class TelegramNotifier:
         self.token: str = tg_cfg.get("bot_token", "")
         self.chat_id: str = str(tg_cfg.get("chat_id", ""))
         self._api_url = f"https://api.telegram.org/bot{self.token}/sendMessage"
+        self._session: aiohttp.ClientSession = None  # 复用 session 避免连接堆积
 
         if self.enabled and (not self.token or not self.chat_id):
             logger.warning("[TG] enabled=true 但 bot_token 或 chat_id 为空，通知将不会发送")
             self.enabled = False
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            connector = aiohttp.TCPConnector(limit=2, force_close=True, enable_cleanup_closed=True)
+            self._session = aiohttp.ClientSession(connector=connector)
+        return self._session
+
+    async def close(self):
+        if self._session and not self._session.closed:
+            await self._session.close()
 
     async def send(self, message: str):
         """发送 Telegram 消息"""
         if not self.enabled:
             return
         try:
-            async with aiohttp.ClientSession() as session:
-                payload = {
-                    "chat_id": self.chat_id,
-                    "text": message,
-                    "parse_mode": "HTML",
-                    "disable_web_page_preview": True,
-                }
-                async with session.post(self._api_url, json=payload, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                    if resp.status != 200:
-                        body = await resp.text()
-                        logger.warning(f"[TG] 发送失败 status={resp.status}: {body}")
+            session = await self._get_session()
+            payload = {
+                "chat_id": self.chat_id,
+                "text": message,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True,
+            }
+            async with session.post(self._api_url, json=payload, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    logger.warning(f"[TG] 发送失败 status={resp.status}: {body}")
         except Exception as e:
             logger.warning("[TG] 发送异常: " + str(e))
 

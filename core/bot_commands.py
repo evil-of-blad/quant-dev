@@ -18,10 +18,12 @@ class TelegramBot:
         self.enabled: bool = tg_cfg.get("enabled", False)
         self.token: str = tg_cfg.get("bot_token", "")
         self.chat_id: str = str(tg_cfg.get("chat_id", ""))
-        self.trader = trader  # LiveTrader 实例，用于读取状态
+        self.trader = trader
         self._api_base = f"https://api.telegram.org/bot{self.token}"
         self._last_update_id: int = 0
-        self._trade_log: list[dict] = []  # 累计交易记录
+        self._trade_log: list[dict] = []
+        self._session: aiohttp.ClientSession = None  # 复用 session
+        self._poll_interval: int = tg_cfg.get("bot_poll_interval", 15)  # 默认 15 秒
 
     def record_trade(self, symbol: str, direction: str, pnl: float, reason: str):
         """记录一笔交易，供 /pnl 查询"""
@@ -33,11 +35,21 @@ class TelegramBot:
             "reason": reason,
         })
 
+    async def _get_session(self) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            connector = aiohttp.TCPConnector(limit=2, force_close=True, enable_cleanup_closed=True)
+            self._session = aiohttp.ClientSession(connector=connector)
+        return self._session
+
+    async def close(self):
+        if self._session and not self._session.closed:
+            await self._session.close()
+
     async def start_polling(self):
         """后台轮询 Telegram 消息"""
         if not self.enabled:
             return
-        logger.info("[TG Bot] 指令监听已启动")
+        logger.info(f"[TG Bot] 指令监听已启动 (轮询间隔 {self._poll_interval}s)")
         while True:
             try:
                 await self._poll()
@@ -45,16 +57,17 @@ class TelegramBot:
                 break
             except Exception as e:
                 logger.warning("[TG Bot] 轮询异常: " + str(e))
-            await asyncio.sleep(3)
+            await asyncio.sleep(self._poll_interval)
 
     async def _poll(self):
+        # 不用 long-polling（timeout=0），改成短连接
         url = f"{self._api_base}/getUpdates"
-        params = {"offset": self._last_update_id + 1, "timeout": 5}
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                if resp.status != 200:
-                    return
-                data = await resp.json()
+        params = {"offset": self._last_update_id + 1, "timeout": 0}
+        session = await self._get_session()
+        async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            if resp.status != 200:
+                return
+            data = await resp.json()
 
         for update in data.get("result", []):
             self._last_update_id = update["update_id"]
@@ -230,10 +243,10 @@ class TelegramBot:
                 "parse_mode": "HTML",
                 "disable_web_page_preview": True,
             }
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                    if resp.status != 200:
-                        body = await resp.text()
-                        logger.warning(f"[TG Bot] 发送失败: {body}")
+            session = await self._get_session()
+            async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    logger.warning(f"[TG Bot] 发送失败: {body}")
         except Exception as e:
             logger.warning("[TG Bot] 发送异常: " + str(e))
