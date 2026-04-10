@@ -100,11 +100,19 @@ class FundingArbTrader:
         warnings = []
         recovered = []
         markets = self.exchange.public.markets
+        DUST_USD = 1.0  # 价值小于 1 USDT 的余额视为灰尘忽略
 
         for symbol in self.symbols:
             spot_symbol = symbol.replace(":USDT", "")
             base_coin = symbol.split("/")[0]
             contract_size = float(markets.get(symbol, {}).get("contractSize", 1) or 1)
+
+            # 当前价格（用于灰尘判断）
+            try:
+                ticker = await self.exchange.fetch_ticker(symbol)
+                price = float(ticker.get("last", 0) or 0)
+            except Exception:
+                price = 0
 
             # 合约空单张数
             swap_contracts = 0.0
@@ -117,8 +125,26 @@ class FundingArbTrader:
 
             # 现货余额（base coin 数量）
             spot_balance = balance.get(base_coin, {}).get("total", 0) or 0
-            # 合约对应的 base 数量（用于和现货对比）
+            # 合约对应的 base 数量
             swap_base_equivalent = swap_contracts * contract_size
+
+            # 灰尘过滤：折算成 USDT 价值，过小则忽略
+            if price > 0:
+                if spot_balance * price < DUST_USD:
+                    if spot_balance > 0:
+                        logger.debug(
+                            f"[费率套利] 忽略 {base_coin} 灰尘余额 "
+                            f"{spot_balance:.8f} (≈{spot_balance*price:.4f} USDT)"
+                        )
+                    spot_balance = 0
+                if swap_base_equivalent * price < DUST_USD:
+                    if swap_contracts > 0:
+                        logger.debug(
+                            f"[费率套利] 忽略 {symbol} 微量空单 "
+                            f"{swap_contracts}张 (≈{swap_base_equivalent*price:.4f} USDT)"
+                        )
+                    swap_contracts = 0
+                    swap_base_equivalent = 0
 
             if swap_contracts > 1e-9 and spot_balance > 1e-9:
                 self._positions[symbol] = {
