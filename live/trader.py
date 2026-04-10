@@ -49,9 +49,13 @@ class LiveTrader:
 
         self._markets = self.exchange.public.markets if hasattr(self.exchange, 'public') else {}
 
+        # ★ 启动时仓位同步：从交易所拉取真实持仓
+        await self._reconcile_positions()
+
         logger.info(
             f"实盘启动 | 策略:{self.strategy.name} | 标的:{self.symbols} "
-            f"| 杠杆:{self.leverage}x | 保证金:{self.margin_mode} | 周期:{self.timeframe}"
+            f"| 杠杆:{self.leverage}x | 保证金:{self.margin_mode} | 周期:{self.timeframe} "
+            f"| 已恢复持仓:{len(self._positions)}"
         )
 
         # 启动通知
@@ -72,6 +76,40 @@ class LiveTrader:
         self._running = False
         await self.exchange.close()
         logger.info("实盘已停止")
+
+    async def _reconcile_positions(self):
+        """
+        启动时同步交易所真实持仓到内存。
+        如果之前异常停机时有未处理的仓位，恢复到 _positions，
+        策略循环里会接管这些仓位的止损/止盈/反手逻辑。
+        """
+        try:
+            positions = await self.exchange.client.fetch_positions(self.symbols)
+        except Exception as e:
+            logger.warning(f"拉取持仓失败，跳过同步: {e}")
+            return
+
+        recovered = []
+        for p in positions:
+            sym = p.get("symbol")
+            contracts = float(p.get("contracts", 0) or 0)
+            if sym not in self.symbols or contracts < 1e-9:
+                continue
+
+            side = p.get("side")  # 'long' or 'short'
+            entry = float(p.get("entryPrice", 0) or 0)
+            self._positions[sym] = {
+                "direction": side,
+                "amount": contracts,
+                "avg_price": entry,
+            }
+            recovered.append(f"{sym} {side} {contracts:.4f} @ {entry:.2f}")
+            logger.info(f"恢复持仓: {sym} | 方向:{side} | 数量:{contracts:.6f} | 均价:{entry:.2f}")
+
+        if recovered:
+            await self.notifier.send(
+                "🔄 <b>启动时恢复持仓</b>\n" + "\n".join(f"• {r}" for r in recovered)
+            )
 
     async def _main_loop(self):
         while self._running:
