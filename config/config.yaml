@@ -71,8 +71,8 @@ funding_arb:
     - DOGE/USDT:USDT
   capital: 800.0               # 套利总资金 (USDT)
   per_symbol_pct: 0.3          # 每个标的占用资金比例 (30%)
-  entry_rate: 0.0005           # 费率 > 0.05% 时开仓
-  exit_rate: 0.0001            # 费率 < 0.01% 时平仓
+  entry_rate: 0.0001           # 费率 ≥ 0.01% 时开仓（年化约 11%）
+  exit_rate: 0.00005           # 费率 ≤ 0.005% 时平仓
   leverage: 1                  # 合约端杠杆（套利建议 1x）
   check_interval: 3600         # 检查间隔（秒），1小时
 

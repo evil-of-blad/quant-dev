@@ -62,8 +62,8 @@ class FundingArbTrader:
             f"💰 <b>费率套利启动</b>\n"
             f"标的: <code>{', '.join(self.symbols)}</code>\n"
             f"资金: <code>{self.capital:.0f} USDT</code>\n"
-            f"开仓阈值: 费率 > {self.entry_rate:.4%}\n"
-            f"退出阈值: 费率 < {self.exit_rate:.4%}"
+            f"开仓阈值: 费率 ≥ {self.entry_rate:.4%}\n"
+            f"退出阈值: 费率 ≤ {self.exit_rate:.4%}"
         )
 
         self._running = True
