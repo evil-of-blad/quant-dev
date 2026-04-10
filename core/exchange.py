@@ -261,13 +261,25 @@ class AsyncExchange:
     async def fetch_balance(self) -> dict:
         return await self.client.fetch_balance()
 
-    async def create_market_order(self, symbol: str, side: str, amount: float) -> dict:
-        logger.info(f"[LIVE] 下市价单: {side} {amount} {symbol}")
-        return await self.client.create_market_order(symbol, side, amount)
+    async def create_market_order(self, symbol: str, side: str, amount: float,
+                                   margin_mode: str = "isolated") -> dict:
+        """
+        合约市价单。OKX 必须传 tdMode（保证金模式），否则会用默认 cross。
+        现货下单调用方需要自己传 tdMode=cash。
+        """
+        logger.info(f"[LIVE] 下市价单: {side} {amount} {symbol} (tdMode={margin_mode})")
+        return await self.client.create_market_order(
+            symbol, side, amount,
+            params={"tdMode": margin_mode}
+        )
 
-    async def create_limit_order(self, symbol: str, side: str, amount: float, price: float) -> dict:
-        logger.info(f"[LIVE] 下限价单: {side} {amount} {symbol} @ {price}")
-        return await self.client.create_limit_order(symbol, side, amount, price)
+    async def create_limit_order(self, symbol: str, side: str, amount: float, price: float,
+                                  margin_mode: str = "isolated") -> dict:
+        logger.info(f"[LIVE] 下限价单: {side} {amount} {symbol} @ {price} (tdMode={margin_mode})")
+        return await self.client.create_limit_order(
+            symbol, side, amount, price,
+            params={"tdMode": margin_mode}
+        )
 
     async def cancel_order(self, order_id: str, symbol: str) -> dict:
         return await self.client.cancel_order(order_id, symbol)
