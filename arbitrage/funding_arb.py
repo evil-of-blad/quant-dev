@@ -24,6 +24,7 @@ from datetime import datetime
 from loguru import logger
 from core.exchange import AsyncExchange
 from core.notifier import TelegramNotifier
+from core.allocation import CapitalAllocator
 
 
 class FundingArbTrader:
@@ -32,10 +33,12 @@ class FundingArbTrader:
         self.config = config
         self.exchange = AsyncExchange(config)
         self.notifier = TelegramNotifier(config)
+        self.allocator = CapitalAllocator(config)
 
         arb_cfg = config.get("funding_arb", {})
         self.symbols: list[str] = arb_cfg.get("symbols", ["ETH/USDT:USDT"])
-        self.capital: float = arb_cfg.get("capital", 800.0)
+        # capital 由 allocator 在 start() 中动态计算，这里只是默认值
+        self.capital: float = arb_cfg.get("capital", 0.0)
         self.per_symbol_pct: float = arb_cfg.get("per_symbol_pct", 0.3)
         self.entry_rate: float = arb_cfg.get("entry_rate", 0.0005)     # 费率 > 0.05% 才开仓
         self.exit_rate: float = arb_cfg.get("exit_rate", 0.0001)       # 费率 < 0.01% 平仓
@@ -49,6 +52,13 @@ class FundingArbTrader:
 
     async def start(self):
         await self.exchange.init()
+
+        # 资金分配（启动时一次性按账户总额计算）
+        await self.allocator.init(self.exchange)
+        allocated = self.allocator.get("funding_arb")
+        if allocated > 0:
+            self.capital = allocated
+            logger.info(f"[费率套利] 分配资金: {self.capital:.2f} USDT")
 
         # 套利用1x杠杆，每个标的都校验
         self._lev_ok: dict[str, bool] = {}

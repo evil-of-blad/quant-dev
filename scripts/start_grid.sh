@@ -1,66 +1,43 @@
 #!/bin/bash
 # ============================================================
-# 费率套利后台启动脚本（强化版）
-# - 优雅停止 + 超时强杀
-# - 启动前清理所有残留进程
-# - 通过进程名匹配，不仅靠 PID 文件
-# 用法:
-#   bash scripts/start_arb.sh          # 启动
-#   bash scripts/start_arb.sh stop     # 停止
-#   bash scripts/start_arb.sh status   # 状态
-#   bash scripts/start_arb.sh restart  # 重启
+# 网格交易后台启动脚本
 # ============================================================
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PYTHON="$PROJECT_DIR/venv/bin/python"
-SCRIPT="$PROJECT_DIR/funding_arb_runner.py"
-PID_FILE="$PROJECT_DIR/logs/funding_arb.pid"
-LOG_FILE="$PROJECT_DIR/logs/funding_arb.log"
-PROC_PATTERN="funding_arb_runner.py"
+SCRIPT="$PROJECT_DIR/grid_runner.py"
+PID_FILE="$PROJECT_DIR/logs/grid.pid"
+LOG_FILE="$PROJECT_DIR/logs/grid.log"
+PROC_PATTERN="grid_runner.py"
 
 mkdir -p "$PROJECT_DIR/logs"
 
-# 找出所有匹配的进程 PID（不包括当前 shell 自己）
 find_pids() {
-    pgrep -f "$PROC_PATTERN" 2>/dev/null | grep -v "^$$\$" | tr '\n' ' '
+    pgrep -f "$PROC_PATTERN" 2>/dev/null | tr '\n' ' '
 }
 
-# 优雅停止单个 PID，超时强杀
 kill_pid() {
     local pid=$1
     local timeout=15
-
     if ! kill -0 "$pid" 2>/dev/null; then
         return 0
     fi
-
     echo "  发送 SIGTERM 到 PID $pid..."
     kill -TERM "$pid" 2>/dev/null
-
-    # 等待最多 timeout 秒
     local i=0
     while [ $i -lt $timeout ]; do
         if ! kill -0 "$pid" 2>/dev/null; then
-            echo "  PID $pid 已优雅退出"
+            echo "  PID $pid 已退出"
             return 0
         fi
         sleep 1
         i=$((i + 1))
     done
-
-    # 超时强杀
-    echo "  ⚠️ PID $pid 在 ${timeout}s 内未退出，发送 SIGKILL"
+    echo "  ⚠️ 超时，发送 SIGKILL"
     kill -KILL "$pid" 2>/dev/null
-    sleep 1
-    if kill -0 "$pid" 2>/dev/null; then
-        echo "  ❌ PID $pid 强杀失败"
-        return 1
-    fi
-    echo "  PID $pid 已强制终止"
 }
 
 start() {
-    # 启动前先确认没有任何残留进程
     local existing
     existing=$(find_pids)
     if [ -n "$existing" ]; then
@@ -68,40 +45,32 @@ start() {
         echo "   请先执行 stop 清理"
         exit 1
     fi
-
-    echo "启动费率套利..."
+    echo "启动网格交易..."
     nohup "$PYTHON" "$SCRIPT" >> "$LOG_FILE" 2>&1 &
     local new_pid=$!
     echo $new_pid > "$PID_FILE"
-
-    # 验证是否真的启动了
     sleep 2
     if ! kill -0 "$new_pid" 2>/dev/null; then
-        echo "❌ 启动失败，请查看日志: tail -50 $LOG_FILE"
+        echo "❌ 启动失败，查看日志: tail -50 $LOG_FILE"
         rm -f "$PID_FILE"
         exit 1
     fi
     echo "✅ 启动成功，PID=$new_pid"
-    echo "   日志: tail -f $LOG_FILE"
 }
 
 stop() {
-    # 不光看 PID 文件，连 pgrep 找到的所有都干掉
     local pids
     pids=$(find_pids)
-
     if [ -z "$pids" ] && [ ! -f "$PID_FILE" ]; then
         echo "未运行"
         return 0
     fi
-
     if [ -n "$pids" ]; then
         echo "找到运行中的进程: $pids"
         for pid in $pids; do
             kill_pid "$pid"
         done
     fi
-
     rm -f "$PID_FILE"
     echo "✅ 已停止"
 }
@@ -113,20 +82,12 @@ status() {
         echo "未运行"
         return
     fi
-    local count
-    count=$(echo "$pids" | wc -w)
-    if [ "$count" -gt 1 ]; then
-        echo "⚠️  发现 $count 个进程（异常！）: $pids"
-    else
-        echo "运行中，PID=$pids"
-    fi
+    echo "运行中，PID=$pids"
     echo ""
-    echo "--- CPU/内存占用 ---"
     for pid in $pids; do
         ps -p "$pid" -o pid,pcpu,pmem,etime,cmd 2>/dev/null | tail -n +2
     done
     echo ""
-    echo "--- 最近 10 条日志 ---"
     tail -10 "$LOG_FILE"
 }
 

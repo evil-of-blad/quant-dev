@@ -91,6 +91,10 @@ class TelegramBot:
             await self._cmd_signal()
         elif cmd == "/pnl":
             await self._cmd_pnl()
+        elif cmd == "/balance":
+            await self._cmd_balance()
+        elif cmd == "/realloc":
+            await self._cmd_realloc()
         elif cmd == "/help":
             await self._cmd_help()
         else:
@@ -221,16 +225,97 @@ class TelegramBot:
         await self._send(msg)
 
     # ------------------------------------------------------------------
+    # /balance
+    # ------------------------------------------------------------------
+    async def _cmd_balance(self):
+        """显示账户余额、资金分配、利用情况"""
+        try:
+            balance = await self.trader.exchange.fetch_balance()
+            usdt = balance.get("USDT", {})
+            total = usdt.get("total", 0) or 0
+            free = usdt.get("free", 0) or 0
+            used = usdt.get("used", 0) or 0
+
+            alloc_cfg = self.trader.config.get("allocation", {})
+            bp = alloc_cfg.get("bollinger_pct", 0)
+            ap = alloc_cfg.get("funding_arb_pct", 0)
+            gp = alloc_cfg.get("grid_pct", 0)
+            rp = max(0, 1 - bp - ap - gp)
+
+            current_alloc = self.trader.allocated_capital
+            expected_alloc = total * bp
+            diff = expected_alloc - current_alloc
+            used_margin = self.trader._used_margin()
+
+            msg = (
+                f"💰 <b>账户余额 & 资金分配</b>\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"总额: <code>{total:.2f} USDT</code>\n"
+                f"可用: <code>{free:.2f} USDT</code>\n"
+                f"占用: <code>{used:.2f} USDT</code>\n\n"
+                f"<b>按比例应分配（基于实时余额）:</b>\n"
+                f"  布林带: <code>{total*bp:.0f}</code> ({bp:.0%})\n"
+                f"  套利:   <code>{total*ap:.0f}</code> ({ap:.0%})\n"
+                f"  网格:   <code>{total*gp:.0f}</code> ({gp:.0%})\n"
+                f"  缓冲:   <code>{total*rp:.0f}</code> ({rp:.0%})\n\n"
+                f"<b>布林带实际状态:</b>\n"
+                f"  已分配: <code>{current_alloc:.0f}</code> USDT\n"
+                f"  已用保证金: <code>{used_margin:.0f}</code> USDT\n"
+                f"  本策略可用: <code>{max(0, current_alloc - used_margin):.0f}</code> USDT"
+            )
+
+            if abs(diff) > 10:
+                msg += (
+                    f"\n\n⚠️ 实时余额变化 <code>{diff:+.0f} USDT</code>\n"
+                    f"发送 /realloc 重新分配（仅布林带，套利和网格需重启）"
+                )
+
+            await self._send(msg)
+        except Exception as e:
+            await self._send(f"🚨 查询失败: <code>{str(e)[:200]}</code>")
+
+    # ------------------------------------------------------------------
+    # /realloc
+    # ------------------------------------------------------------------
+    async def _cmd_realloc(self):
+        """重新分配资金（仅当前策略：布林带）"""
+        try:
+            old = self.trader.allocated_capital
+            await self.trader.allocator.init(self.trader.exchange)
+            new = self.trader.allocator.get("bollinger")
+            self.trader.allocated_capital = new
+
+            change = new - old
+            emoji = "📈" if change > 0 else ("📉" if change < 0 else "➡️")
+
+            msg = (
+                f"🔄 <b>布林带资金重新分配</b>\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"原分配: <code>{old:.0f} USDT</code>\n"
+                f"新分配: <code>{new:.0f} USDT</code>\n"
+                f"变化: {emoji} <code>{change:+.0f} USDT</code>\n\n"
+                f"账户总额: <code>{self.trader.allocator.total_balance:.2f} USDT</code>\n\n"
+                f"<i>套利和网格策略需单独重启服务才能重新分配:\n"
+                f"bash scripts/start_arb.sh restart\n"
+                f"bash scripts/start_grid.sh restart</i>"
+            )
+            await self._send(msg)
+        except Exception as e:
+            await self._send(f"🚨 重新分配失败: <code>{str(e)[:200]}</code>")
+
+    # ------------------------------------------------------------------
     # /help
     # ------------------------------------------------------------------
     async def _cmd_help(self):
         msg = (
             "🤖 <b>量化机器人指令</b>\n"
             "━━━━━━━━━━━━━━━\n"
-            "/status — 查看持仓和权益\n"
-            "/signal — 查看当前策略信号\n"
-            "/pnl — 查看累计盈亏\n"
-            "/help — 显示帮助"
+            "/status  — 查看持仓和权益\n"
+            "/signal  — 查看当前策略信号\n"
+            "/pnl     — 查看累计盈亏\n"
+            "/balance — 查看账户余额和资金分配\n"
+            "/realloc — 重新分配布林带资金\n"
+            "/help    — 显示帮助"
         )
         await self._send(msg)
 

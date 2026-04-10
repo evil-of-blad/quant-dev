@@ -9,6 +9,7 @@ from core.data_feed import add_indicators
 from core.risk import RiskManager
 from core.notifier import TelegramNotifier
 from core.bot_commands import TelegramBot
+from core.allocation import CapitalAllocator
 from strategies.base import BaseStrategy
 
 
@@ -25,6 +26,8 @@ class LiveTrader:
         self.risk = RiskManager(config)
         self.notifier = TelegramNotifier(config)
         self.bot = TelegramBot(config, self)
+        self.allocator = CapitalAllocator(config)
+        self.allocated_capital: float = 0.0
 
         t_cfg = config["trading"]
         self.symbols: list[str] = t_cfg["symbols"]
@@ -48,6 +51,13 @@ class LiveTrader:
             await self.exchange.set_leverage(symbol, self.leverage, self.margin_mode)
 
         self._markets = self.exchange.public.markets if hasattr(self.exchange, 'public') else {}
+
+        # 资金分配
+        await self.allocator.init(self.exchange)
+        self.allocated_capital = self.allocator.get("bollinger")
+        if self.allocated_capital <= 0:
+            logger.error("布林带未分配资金，请检查 config.allocation.bollinger_pct")
+            return
 
         # ★ 启动时仓位同步：从交易所拉取真实持仓
         await self._reconcile_positions()
@@ -80,8 +90,7 @@ class LiveTrader:
     async def _reconcile_positions(self):
         """
         启动时同步交易所真实持仓到内存。
-        如果之前异常停机时有未处理的仓位，恢复到 _positions，
-        策略循环里会接管这些仓位的止损/止盈/反手逻辑。
+        恢复后立即检查是否已触发止损/止盈，提前预警。
         """
         try:
             positions = await self.exchange.client.fetch_positions(self.symbols)
@@ -90,26 +99,45 @@ class LiveTrader:
             return
 
         recovered = []
+        warnings = []
+
         for p in positions:
             sym = p.get("symbol")
             contracts = float(p.get("contracts", 0) or 0)
             if sym not in self.symbols or contracts < 1e-9:
                 continue
 
-            side = p.get("side")  # 'long' or 'short'
+            side = p.get("side")
             entry = float(p.get("entryPrice", 0) or 0)
             self._positions[sym] = {
                 "direction": side,
                 "amount": contracts,
                 "avg_price": entry,
             }
-            recovered.append(f"{sym} {side} {contracts:.4f} @ {entry:.2f}")
-            logger.info(f"恢复持仓: {sym} | 方向:{side} | 数量:{contracts:.6f} | 均价:{entry:.2f}")
+
+            # 拉当前价 + ATR 检查是否已触发风控
+            try:
+                ticker = await self.exchange.fetch_ticker(sym)
+                curr_price = float(ticker.get("last", entry) or entry)
+                pnl = (curr_price - entry) * contracts if side == "long" else (entry - curr_price) * contracts
+                pnl_pct = (pnl / (entry * contracts / self.leverage)) * 100 if entry > 0 else 0
+
+                line = f"{sym} {side} {contracts:.4f} @ {entry:.2f} | 现价 {curr_price:.2f} | 浮盈 {pnl_pct:+.2f}%"
+                recovered.append(line)
+                logger.info(f"恢复持仓: {line}")
+
+                # 提前警告：如果浮亏接近止损比例，提示用户
+                if pnl_pct < -self.risk.stop_loss_pct * 100 * 0.8:
+                    warnings.append(f"⚠️ {sym} 浮亏 {pnl_pct:.2f}% 接近止损线")
+            except Exception as e:
+                recovered.append(f"{sym} {side} {contracts:.4f} @ {entry:.2f}")
+                logger.warning(f"恢复持仓但无法获取实时价: {e}")
 
         if recovered:
-            await self.notifier.send(
-                "🔄 <b>启动时恢复持仓</b>\n" + "\n".join(f"• {r}" for r in recovered)
-            )
+            msg = "🔄 <b>启动时恢复持仓</b>\n" + "\n".join(f"• {r}" for r in recovered)
+            if warnings:
+                msg += "\n\n" + "\n".join(warnings)
+            await self.notifier.send(msg)
 
     async def _main_loop(self):
         while self._running:
@@ -125,8 +153,14 @@ class LiveTrader:
     async def _tick(self):
         balance = await self.exchange.fetch_balance()
         usdt_free = balance.get("USDT", {}).get("free", 0) or 0
-        equity = self._estimate_equity(usdt_free)
-        logger.info(f"[{datetime.utcnow().strftime('%H:%M:%S')}] 可用:{usdt_free:.2f} USDT | 估算权益:{equity:.2f}")
+        # 使用分配的资金 + 当前已用保证金作为策略权益（与其他策略隔离）
+        used_margin = self._used_margin()
+        equity = self.allocated_capital  # 风控基准始终用分配额度
+        logger.info(
+            f"[{datetime.utcnow().strftime('%H:%M:%S')}] "
+            f"分配:{self.allocated_capital:.2f} | 已用:{used_margin:.2f} | "
+            f"全局可用:{usdt_free:.2f}"
+        )
 
         # 定时状态播报
         self._tick_count += 1
@@ -181,7 +215,9 @@ class LiveTrader:
                 if not self._positions.get(symbol):
                     stop = self.risk.calc_stop_price(current_price, "long", atr)
                     size = self.risk.calc_position_size(equity, current_price, stop)
-                    size = min(size, usdt_free * self.leverage * 0.95 / current_price)
+                    # 仓位上限：分配资金 - 已用保证金（自己的策略额度）
+                    available_capital = max(0, self.allocated_capital - self._used_margin())
+                    size = min(size, available_capital * self.leverage * 0.95 / current_price)
                     if size > 0:
                         await self._open_position(symbol, "long", size, current_price)
 
@@ -192,7 +228,9 @@ class LiveTrader:
                 if not self._positions.get(symbol):
                     stop = self.risk.calc_stop_price(current_price, "short", atr)
                     size = self.risk.calc_position_size(equity, current_price, stop)
-                    size = min(size, usdt_free * self.leverage * 0.95 / current_price)
+                    # 仓位上限：分配资金 - 已用保证金（自己的策略额度）
+                    available_capital = max(0, self.allocated_capital - self._used_margin())
+                    size = min(size, available_capital * self.leverage * 0.95 / current_price)
                     if size > 0:
                         await self._open_position(symbol, "short", size, current_price)
 
@@ -262,9 +300,12 @@ class LiveTrader:
             await self.notifier.notify_error(f"平仓失败 {symbol}: {e}")
             return 0.0
 
-    def _estimate_equity(self, usdt_free: float) -> float:
-        pos_margin = sum(
+    def _used_margin(self) -> float:
+        """当前持仓占用的保证金（仅本策略）"""
+        return sum(
             p["amount"] * p["avg_price"] / self.leverage
             for p in self._positions.values()
         )
-        return usdt_free + pos_margin
+
+    def _estimate_equity(self, usdt_free: float) -> float:
+        return usdt_free + self._used_margin()

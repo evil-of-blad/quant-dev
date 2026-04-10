@@ -1,6 +1,7 @@
 # 虚拟货币量化交易系统
 
-基于 Python + CCXT 构建的永续合约量化交易框架，对接 OKX 交易所，支持策略回测与模拟盘/实盘自动交易。
+基于 Python + CCXT 构建的永续合约量化交易框架，对接 OKX 交易所。
+支持回测、参数优化、多策略实盘并行、Telegram 通知与远程指令。
 
 ---
 
@@ -9,32 +10,87 @@
 ```
 quant-dev/
 ├── config/
-│   └── config.yaml          # 所有配置（API Key、策略参数、风控参数）
-├── core/                    # 核心引擎
-│   ├── exchange.py          # 交易所连接（行情走公开接口，交易走账户接口）
-│   ├── data_feed.py         # 历史K线拉取、技术指标计算、本地缓存
-│   ├── backtester.py        # 回测引擎（逐K线撮合）
-│   ├── portfolio.py         # 仓位管理（多/空/杠杆/保证金/强平）
-│   ├── risk.py              # 风险控制（仓位计算/止损止盈/回撤熔断）
-│   └── order.py             # 订单数据结构
-├── strategies/              # 策略模块
-│   ├── base.py              # 策略基类（继承此类编写自定义策略）
-│   ├── ma_crossover.py      # 双均线交叉策略
-│   ├── rsi_strategy.py      # RSI 超买超卖策略
-│   ├── bollinger_bands.py   # 布林带策略
-│   └── registry.py          # 策略注册表
-├── analysis/                # 分析与可视化
-│   ├── metrics.py           # 绩效指标（夏普/回撤/盈利因子等）
-│   └── visualizer.py        # 回测图表（四联图）
+│   └── config.yaml              # 所有配置（API Key / 策略 / 风控 / 资金分配）
+│
+├── core/                        # 核心引擎
+│   ├── exchange.py              # 交易所连接（公开行情 + 私有账户分离）
+│   ├── data_feed.py             # 历史K线拉取、技术指标、本地缓存
+│   ├── backtester.py            # 回测引擎（合约 + 杠杆 + 资金费率 + 强平）
+│   ├── portfolio.py             # 仓位管理（多/空/杠杆/保证金/强平）
+│   ├── risk.py                  # 风控（ATR动态止损 / 移动止盈 / 熔断 / 冷却重启）
+│   ├── order.py                 # 订单数据结构
+│   ├── allocation.py            # 多策略资金分配（按百分比隔离）
+│   ├── notifier.py              # Telegram 通知
+│   └── bot_commands.py          # Telegram 远程指令处理
+│
+├── strategies/                  # 策略模块
+│   ├── base.py                  # 策略基类
+│   ├── ma_crossover.py          # 双均线交叉（含趋势过滤）
+│   ├── rsi_strategy.py          # RSI 超买超卖
+│   ├── bollinger_bands.py       # 布林带（当前主策略）
+│   ├── td_sequential.py         # 神奇九转
+│   ├── combo.py                 # 多策略组合
+│   ├── adaptive.py              # ADX 自适应
+│   └── registry.py              # 策略注册表
+│
+├── arbitrage/                   # 套利与网格策略
+│   ├── funding_arb.py           # 资金费率套利（现货+合约对冲）
+│   └── grid_trader.py           # 网格交易（永续合约）
+│
+├── analysis/
+│   ├── metrics.py               # 绩效指标
+│   └── visualizer.py            # 回测四联图
+│
 ├── live/
-│   └── trader.py            # 实盘交易引擎（异步）
-├── data/                    # K线数据本地缓存（parquet格式）
-├── logs/                    # 日志文件 + 回测图表
-├── backtest_runner.py       # 回测入口
-├── optimize.py              # 参数网格搜索
-├── main.py                  # 实盘入口
+│   └── trader.py                # 布林带实盘引擎（含 Telegram bot）
+│
+├── scripts/                     # 后台启动 & 部署脚本
+│   ├── start.sh                 # 布林带后台运行
+│   ├── start_arb.sh             # 套利后台运行
+│   ├── start_grid.sh            # 网格后台运行
+│   ├── deploy.sh                # systemd 服务安装
+│   ├── rebalance_arb.py         # 套利仓位失衡修复工具
+│   └── quant-trader.service.template
+│
+├── data/                        # K线数据缓存（parquet）
+├── logs/                        # 日志 + 回测图表 + 网格状态文件
+├── backtest_runner.py           # 回测入口
+├── optimize.py                  # 参数网格搜索（支持跨周期）
+├── main.py                      # 布林带实盘入口
+├── funding_arb_runner.py        # 套利实盘入口
+├── grid_runner.py               # 网格实盘入口
+├── Makefile                     # 快捷命令
+├── DEPLOY.md                    # 服务器部署教程
 └── requirements.txt
 ```
+
+---
+
+## 三套并行策略
+
+| 策略 | 标的 | 杠杆 | 周期 | 入口 |
+|------|------|------|------|------|
+| **布林带** | BTC + XRP | 5x | 4h | `main.py` |
+| **资金费率套利** | ETH + SOL + DOGE | 1x | 1h 检查 | `funding_arb_runner.py` |
+| **网格交易** | LINK | 2x | 1min 检查 | `grid_runner.py` |
+
+三个策略**完全独立运行**，通过 `core/allocation.py` 按百分比隔离资金，互不冲突。
+
+---
+
+## 资金分配
+
+`config.yaml` 中按账户总额百分比分配：
+
+```yaml
+allocation:
+  bollinger_pct: 0.40    # 布林带 40%
+  funding_arb_pct: 0.30  # 套利 30%
+  grid_pct: 0.20         # 网格 20%
+  # 剩余 10% 缓冲
+```
+
+启动时各策略自动按比例计算自己的额度，**不会争用全局 USDT**。
 
 ---
 
@@ -43,84 +99,88 @@ quant-dev/
 ### 1. 安装依赖
 
 ```bash
-# 使用项目虚拟环境
-/path/to/venv/bin/pip install -r requirements.txt
+make install
+# 或
+python3 -m venv venv
+venv/bin/pip install -r requirements.txt
 ```
 
 ### 2. 配置 API Key
 
-编辑 `config/config.yaml`：
+```bash
+nano config/config.yaml
+```
 
+填入：
 ```yaml
 exchange:
-  api_key: "你的OKX API Key"
-  api_secret: "你的OKX API Secret"
-  passphrase: "你的OKX Passphrase"
-  sandbox: true      # true=模拟盘，false=正式交易
+  api_key: "..."
+  api_secret: "..."
+  passphrase: "..."
+  sandbox: false   # true=模拟盘
 ```
 
-> OKX 模拟盘需要在 OKX 网页 → 模拟交易 → API管理 里单独创建一套 Key
-
-### 3. 运行回测
+### 3. 跑回测
 
 ```bash
-# 默认策略（config.yaml 中配置的）
-python backtest_runner.py
-
-# 指定策略和标的
-python backtest_runner.py --strategy ma_crossover --symbol BTC/USDT:USDT
-python backtest_runner.py --strategy rsi --symbol ETH/USDT:USDT
-python backtest_runner.py --strategy bollinger_bands --symbol BTC/USDT:USDT
-
-# 指定时间范围
-python backtest_runner.py --strategy ma_crossover --start 2024-06-01 --end 2024-12-31
-
-# 不生成图表
-python backtest_runner.py --no-plot
+make backtest-all                                       # 默认策略
+make backtest STRATEGY=ma_crossover SYMBOL=BTC/USDT:USDT
+make optimize                                           # 参数网格搜索
 ```
 
-### 4. 参数优化
+### 4. 启动实盘（三个策略独立启动）
 
 ```bash
-python optimize.py --strategy ma_crossover --symbol BTC/USDT:USDT
+# 方式 A：bash 脚本
+bash scripts/start.sh         # 布林带
+bash scripts/start_arb.sh     # 套利
+bash scripts/start_grid.sh    # 网格
+
+# 方式 B：Makefile
+make start
+make arb-start
+make grid-start
+
+# 方式 C：systemd（适合服务器）
+make service-install
+make service-start
 ```
 
-自动网格搜索所有参数组合，按夏普比率排序，输出 Top 10。
-
-### 5. 启动实盘
-
-```bash
-python main.py
-python main.py --strategy ma_crossover
-```
+详细的服务器部署见 [DEPLOY.md](DEPLOY.md)。
 
 ---
 
-## 系统架构详解
+## Telegram 通知与指令
 
-### 数据流
+在 `config.yaml` 配置后，所有策略事件自动推送到手机：
 
-```
-OKX 公开行情接口
-    ↓ fetch_ohlcv_range()
-data_feed.py  →  add_indicators()  →  DataFrame（含MACD/RSI/BB等指标）
-    ↓ 本地缓存（data/*.parquet）
-策略模块  →  信号（1/−1/0）
-    ↓
-回测引擎 / 实盘引擎
-    ↓
-OKX 模拟盘/正式账户（下单）
+```yaml
+telegram:
+  enabled: true
+  bot_token: "你的BotFather Token"
+  chat_id: "你的chat_id"
+  bot_poll_interval: 15      # 指令轮询间隔（秒）
+  status_interval: 6         # 定时状态播报（每N tick）
 ```
 
-### 信号约定
+**支持的远程指令（在 Telegram 里发送）：**
 
-所有策略统一返回整数信号：
+| 指令 | 功能 |
+|------|------|
+| `/status` | 查看当前持仓和浮盈 |
+| `/signal` | 查看 BTC/XRP 当前策略信号状态 |
+| `/pnl` | 查看累计盈亏和最近交易 |
+| `/balance` | 查看账户余额、资金分配、利用情况 |
+| `/realloc` | 重新分配布林带资金（充值/提现后用） |
+| `/help` | 显示指令帮助 |
 
-| 信号值 | 含义 |
-|--------|------|
-| `1` | 做多（开多仓，或反手平空开多） |
-| `-1` | 做空（开空仓，或反手平多开空） |
-| `0` | 不操作，持仓不动 |
+**自动通知事件：**
+
+- 🚀 启动 / 🔄 持仓恢复
+- 🟢 开多 / 🔴 开空 / ✅ 平仓 / ❌ 止损 / 🎯 止盈
+- ⚠️ 熔断触发 / 套利不平衡警告
+- 💰 套利日报 / 网格跨格异常
+- 🚨 异常报警
 
 ---
 
@@ -128,133 +188,95 @@ OKX 模拟盘/正式账户（下单）
 
 ### `core/exchange.py` — 交易所连接
 
-两个客户端分工明确：
+- `public` 客户端：拉行情，无需 Key，不走 sandbox
+- `client` 客户端：账户/下单，按 config 走 sandbox 或正式
+- `set_leverage` / `set_margin_mode` 自动处理 OKX 单向持仓多种 posSide
+- `ensure_leverage` 每次下单前校验杠杆，避免 OKX 后台修改导致失误
 
-- `public`（公开接口，无需 Key，不走 sandbox）：负责拉 K 线、获取行情
-- `client`（账户接口，需要 Key）：负责查余额、下单、撤单
+### `core/data_feed.py` — 数据与指标
 
-```python
-exchange = Exchange(config)
-df = exchange.fetch_ohlcv_range("BTC/USDT:USDT", "4h", "2024-01-01", "2024-12-31")
-```
-
----
-
-### `core/data_feed.py` — 数据获取与指标
-
-`get_historical_data()` 自动处理缓存，第一次拉取后保存到 `data/` 目录，下次直接读本地文件。
-
-`add_indicators()` 计算的指标包括：
-
-| 指标 | 列名 |
-|------|------|
-| 简单均线 | `sma_10`, `sma_30`, `sma_50`, `sma_200` |
-| 指数均线 | `ema_9`, `ema_21` |
-| MACD | `macd`, `macd_signal`, `macd_hist` |
-| RSI | `rsi_14` |
-| 布林带 | `bb_upper`, `bb_mid`, `bb_lower`, `bb_width` |
-| ATR | `atr_14` |
-| 成交量均线 | `vol_sma_20` |
-
----
+含 SMA / EMA / MACD / RSI / Bollinger / ATR / ADX 等指标，自动 parquet 缓存。
 
 ### `core/backtester.py` — 回测引擎
 
-**合约回测完整模拟：**
-
-- **手续费**：开仓/平仓各收一次，默认 Taker 0.05%
-- **滑点**：做多时成交价上浮 0.02%，做空时下浮 0.02%
-- **资金费率**：每 8 小时扣一次（4h K线 = 每 2 根），多仓付/空仓收
-- **强平检测**：每根 K 线检查逐仓保证金是否耗尽
-- **止损/止盈**：每根 K 线 close 价触发
-- **回撤熔断**：最大回撤超过阈值时停止开新仓，平掉现有仓位
-
-执行顺序（每根K线）：
-```
-快照权益 → 强平检查 → 资金费率 → 熔断检查 → 止损/止盈 → 策略信号 → 开/平仓
-```
-
----
-
-### `core/portfolio.py` — 仓位管理
-
-支持多空双向持仓，每个 symbol 同时只持有一个方向。
-
-关键方法：
-
-```python
-portfolio.apply_order(order, leverage=3)      # 应用订单到仓位
-portfolio.check_liquidation(symbol, price)    # 检查强平
-portfolio.deduct_funding_rate(symbol, price, rate)  # 扣资金费率
-portfolio.total_equity(prices)               # 计算总权益
-```
-
-强平价格计算（逐仓模式）：
-- 多仓：`entry_price × (1 - 1/leverage + 维持保证金率)`
-- 空仓：`entry_price × (1 + 1/leverage - 维持保证金率)`
-
----
+合约回测完整模拟：
+- 手续费 + 滑点 + 资金费率
+- 强平检测（逐仓维持保证金率 0.4%）
+- ATR 动态止损 + 移动止盈
+- 最大回撤熔断 + 冷却重启
+- 多空双向
 
 ### `core/risk.py` — 风险管理
 
-**仓位计算公式（基于固定风险）：**
+- **ATR 动态止损**：`止损距离 = ATR × atr_stop_mult`，比固定百分比更适应波动
+- **移动止盈**：盈利达激活阈值后追踪最有利价，回撤超阈值平仓
+- **熔断 + 冷却**：最大回撤触发停止交易，冷却 N 根 K 线后重置峰值恢复
 
-```
-单笔风险金额 = 总权益 × risk_per_trade_pct（默认1%）
-所需保证金   = 单笔风险金额 / 止损比例
-开仓数量     = 所需保证金 × 杠杆 / 当前价格
-```
+### `core/portfolio.py` — 仓位管理
 
-例：总权益 10000 USDT，止损 3%，杠杆 3x：
-- 单笔风险 = 100 USDT
-- 所需保证金 = 100 / 0.03 = 3333 USDT（但受 max_position_pct=20% 限制，最多用 2000 USDT）
-- 实际开仓价值 = 2000 × 3 = 6000 USDT
+支持多空双向，逐仓保证金，每个 symbol 同时只持一个方向。
+
+### `core/allocation.py` — 资金分配
+
+启动时一次性按百分比从账户总额分配给三个策略，每个策略只看自己的额度。
+
+### `arbitrage/funding_arb.py` — 资金费率套利
+
+- 费率高时买现货 + 空合约对冲（多空抵消，价格波动不影响）
+- 每 8 小时收资金费率
+- 费率回落时平掉两边
+- 原子化下单：合约失败立即回滚现货，避免单边敞口
+- 启动时同步 + 失衡检测 + 灰尘忽略
+
+### `arbitrage/grid_trader.py` — 网格交易
+
+- 在 [lower, upper] 区间均分 N 格
+- 价格穿过格点自动买卖
+- `max_grids_per_tick` 限制单次最多跨几格，防止重启或停机后大额错单
+- `logs/grid_state.json` 持久化网格状态
+
+### `live/trader.py` — 布林带实盘引擎
+
+- 异步轮询，按 4h 周期检查 BTC + XRP 信号
+- 每次开仓前 `ensure_leverage` 校验
+- 启动时仓位同步 + 浮亏预警
+- 集成 Telegram bot 命令处理
 
 ---
 
-### `strategies/` — 策略模块
+## 内置策略
 
-#### 如何编写自定义策略
+| 策略 | 信号逻辑 | 适用场景 |
+|------|---------|---------|
+| `bollinger_bands` | 布林带 + RSI 双向反转 | **当前主策略**，震荡市 |
+| `ma_crossover` | 双均线金叉死叉 + SMA200 趋势过滤 | 趋势行情 |
+| `rsi` | RSI 超买超卖 | 短线反弹 |
+| `td_sequential` | 神奇九转（连续9根反转） | 反转抄底/摸顶 |
+| `combo` | 双均线 + 布林带组合 | 多重确认 |
+| `adaptive` | ADX 判断趋势/震荡，动态选策略 | 自适应 |
+
+### 编写自定义策略
 
 ```python
 from strategies.base import BaseStrategy
-import pandas as pd
 
 class MyStrategy(BaseStrategy):
-    def __init__(self, params: dict):
+    def __init__(self, params):
         super().__init__(params)
         self.my_param = params.get("my_param", 10)
 
-    def generate_signal(self, df: pd.DataFrame, symbol: str) -> int:
-        # df 包含截至当前 bar 的所有历史数据和指标
-        # 返回 1=做多, -1=做空, 0=不操作
+    def generate_signal(self, df, symbol):
+        # 1=做多, -1=做空, 0=不动
         if df["rsi_14"].iloc[-1] < 30:
             return 1
-        if df["rsi_14"].iloc[-1] > 70:
-            return -1
         return 0
 ```
 
-在 `strategies/registry.py` 注册后，即可通过 `--strategy my_strategy` 调用。
-
-#### 内置策略
-
-**双均线交叉（ma_crossover）**
-- 金叉（快线上穿慢线）→ 做多
-- 死叉（快线下穿慢线）→ 做空
-- 推荐参数：fast=20, slow=30（4h BTC 优化结果）
-
-**RSI 超买超卖（rsi）**
-- RSI 从超卖区（<30）回升 → 做多
-- RSI 从超买区（>70）回落 → 做空
-
-**布林带（bollinger_bands）**
-- 触及下轨 + RSI 超卖 → 做多
-- 触及上轨 + RSI 超买 → 做空
+在 `strategies/registry.py` 注册后即可通过 `--strategy my_strategy` 调用。
 
 ---
 
-## 配置文件说明
+## 配置文件全貌
 
 ```yaml
 exchange:
@@ -262,57 +284,123 @@ exchange:
   api_key: ""
   api_secret: ""
   passphrase: ""
-  sandbox: true        # true=模拟盘
-  market_type: swap    # swap=永续合约, spot=现货
+  sandbox: false
+  market_type: swap
 
 trading:
   symbols:
-    - BTC/USDT:USDT    # OKX 永续合约格式
+    - BTC/USDT:USDT
+    - XRP/USDT:USDT
   timeframe: 4h
-  leverage: 3          # 杠杆倍数
-  margin_mode: isolated  # isolated=逐仓, cross=全仓
+  leverage: 5
+  margin_mode: isolated
 
 risk:
-  max_position_pct: 0.2      # 单笔最大保证金占比 20%
-  stop_loss_pct: 0.03        # 止损 3%
-  take_profit_pct: 0.06      # 止盈 6%
-  max_drawdown_pct: 0.15     # 最大回撤熔断 15%
-  risk_per_trade_pct: 0.01   # 单笔风险 1%
+  max_position_pct: 0.2          # 单笔最大保证金占比
+  stop_loss_pct: 0.03            # 备用固定止损（ATR 关闭时用）
+  take_profit_pct: 0.06
+  max_drawdown_pct: 0.15         # 最大回撤熔断阈值
+  risk_per_trade_pct: 0.01       # 单笔风险占总资金
+  cooldown_bars: 100             # 熔断后冷却K线数
+  use_atr_stop: true             # 启用 ATR 动态止损
+  atr_stop_mult: 2.5             # 止损 = ATR × 2.5
+  use_trailing_stop: false       # 移动止盈（布林带不适用）
+
+allocation:
+  bollinger_pct: 0.40
+  funding_arb_pct: 0.30
+  grid_pct: 0.20
 
 backtest:
   initial_capital: 10000.0
-  fee_rate: 0.0005     # 合约 Taker 手续费 0.05%
+  fee_rate: 0.0005               # 合约 Taker 0.05%
   slippage_pct: 0.0002
-  funding_rate: 0.0001 # 资金费率 0.01%/8h
+  funding_rate: 0.0001
 
 strategy:
-  name: ma_crossover
+  name: bollinger_bands
   params:
-    fast_period: 20
-    slow_period: 30
+    bb_period: 30
+    bb_std: 2.0
+    rsi_oversold: 35
+
+grid:
+  symbol: LINK/USDT:USDT
+  upper_price: 9.85
+  lower_price: 8.05
+  grid_count: 20
+  capital: 400.0                 # 会被 allocation 动态覆盖
+  leverage: 2
+  max_grids_per_tick: 3
+
+funding_arb:
+  symbols:
+    - ETH/USDT:USDT
+    - SOL/USDT:USDT
+    - DOGE/USDT:USDT
+  capital: 600.0                 # 会被 allocation 动态覆盖
+  per_symbol_pct: 0.25
+  entry_rate: 0.0001             # 费率 ≥ 0.01% 开仓
+  exit_rate: 0.00005
+  leverage: 1
+
+telegram:
+  enabled: true
+  bot_token: ""
+  chat_id: ""
+  bot_poll_interval: 15
+  status_interval: 6
 ```
 
 ---
 
-## 回测绩效指标说明
+## 常用命令速查
 
-| 指标 | 含义 | 参考值 |
-|------|------|--------|
-| 总收益率 | 回测期间总盈亏 / 初始资金 | >0% |
-| 夏普比率 | 风险调整后收益（年化） | >1 良好，>2 优秀 |
-| 最大回撤 | 净值从峰值的最大跌幅 | 绝对值越小越好 |
-| 卡玛比率 | 总收益率 / 最大回撤绝对值 | >1 良好 |
-| 盈利因子 | 总盈利 / 总亏损 | >1.5 良好 |
-| 胜率 | 盈利交易 / 总交易次数 | 趋势策略一般 25%~40% |
+| 操作 | 命令 |
+|------|------|
+| 安装依赖 | `make install` |
+| 跑回测 | `make backtest-all` |
+| 参数优化 | `make optimize` |
+| 启动布林带 | `make start` |
+| 启动套利 | `make arb-start` |
+| 启动网格 | `make grid-start` |
+| 停止布林带 | `make stop` |
+| 停止套利 | `make arb-stop` |
+| 停止网格 | `make grid-stop` |
+| 看布林带日志 | `make log` |
+| 看套利日志 | `make arb-log` |
+| 看网格日志 | `make grid-log` |
+| 修复套利失衡 | `venv/bin/python scripts/rebalance_arb.py --fix` |
 
-> 趋势跟踪策略胜率通常不高（20%~35%），但靠"赢大亏小"盈利，盈利因子比胜率更重要。
+---
+
+## 回测绩效参考
+
+### 布林带（BTC, 5x, 跨周期参数）
+
+| 时间段 | 收益率 | 夏普 | 最大回撤 |
+|--------|--------|------|----------|
+| 2023 | +11.93% | - | - |
+| 2024 | +11.12% | - | - |
+| 2025 | +42.69% | - | - |
+| **三年合计** | **+59.40%** | **1.49** | -23.42% |
+
+### 网格（LINK, 2x, 24-25）
+
+| 时间段 | 收益率 | 交易次数 |
+|--------|--------|----------|
+| 2024 | +55.53% | - |
+| 2025 | +12.54% | - |
+| **24-25 合计** | **+60.21%** | 706 |
 
 ---
 
 ## 注意事项
 
-1. **先模拟盘，再实盘**：config 中 `sandbox: true` 时使用模拟账户，确认策略稳定后再切换到 `false`
-2. **杠杆风险**：合约杠杆放大收益的同时也放大亏损，建议从 2~3x 开始
-3. **资金费率**：永续合约持仓过夜会产生资金费率，频繁换仓会累积手续费
-4. **滑点**：实盘成交价可能与信号触发价有偏差，流动性差的标的偏差更大
-5. **历史不代表未来**：回测结果仅供参考，市场状态会变化
+1. **先模拟盘，再实盘**：`sandbox: true` 跑稳定后再切 `false`
+2. **首次启动前**：在 OKX 网页对每个标的设置「逐仓 + 对应杠杆」，程序会校验
+3. **充值/提现后**：发 `/realloc` 重新分配布林带，套利和网格需要重启
+4. **现货与合约共用账户**：套利策略要求 OKX 账户模式支持现货 + 合约同时持仓
+5. **网格区间过期**：定期检查 `grid.upper_price` / `lower_price` 是否还覆盖当前价
+6. **历史不代表未来**：回测仅供参考，市场状态会变化
+7. **杠杆风险**：合约放大收益也放大亏损，从低杠杆开始

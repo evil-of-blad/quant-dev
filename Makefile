@@ -47,6 +47,22 @@ status:
 restart:
 	bash scripts/start.sh restart
 
+# ---------- 网格交易 ----------
+grid-start:
+	bash scripts/start_grid.sh start
+
+grid-stop:
+	bash scripts/start_grid.sh stop
+
+grid-status:
+	bash scripts/start_grid.sh status
+
+grid-restart:
+	bash scripts/start_grid.sh restart
+
+grid-log:
+	tail -f logs/grid.log
+
 # ---------- 费率套利 ----------
 arb-start:
 	bash scripts/start_arb.sh start
