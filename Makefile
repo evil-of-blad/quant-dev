@@ -47,6 +47,22 @@ status:
 restart:
 	bash scripts/start.sh restart
 
+# ---------- 市场告警引擎 ----------
+alert-start:
+	bash scripts/start_alert.sh start
+
+alert-stop:
+	bash scripts/start_alert.sh stop
+
+alert-status:
+	bash scripts/start_alert.sh status
+
+alert-restart:
+	bash scripts/start_alert.sh restart
+
+alert-log:
+	tail -f logs/alert.log
+
 # ---------- 网格交易 ----------
 grid-start:
 	bash scripts/start_grid.sh start

@@ -27,6 +27,7 @@ from loguru import logger
 from core.exchange import AsyncExchange
 from core.notifier import TelegramNotifier
 from core.allocation import CapitalAllocator
+from core.stats import StrategyStats
 
 
 class GridTrader:
@@ -36,6 +37,7 @@ class GridTrader:
         self.exchange = AsyncExchange(config)
         self.notifier = TelegramNotifier(config)
         self.allocator = CapitalAllocator(config)
+        self.stats = StrategyStats("grid")
 
         g = config.get("grid", {})
         self.symbol: str = g.get("symbol", "BTC/USDT:USDT")
@@ -44,7 +46,13 @@ class GridTrader:
         self.grid_count: int = g.get("grid_count", 20)
         self.capital: float = g.get("capital", 0.0)
         self.leverage: int = g.get("leverage", 2)
-        self.check_interval: int = g.get("check_interval", 30)  # 30s 检查挂单
+        self.check_interval: int = g.get("check_interval", 30)
+        # 边界保护
+        self.boundary_breakout_bars: int = g.get("boundary_breakout_bars", 12)  # 价格连续N次检查在区间外
+        self.max_loss_pct: float = g.get("max_loss_pct", 0.20)  # 最大亏损20%全平止损
+        # 计数器
+        self._out_of_range_count: int = 0
+        self._initial_capital: float = 0.0  # 启动时的资金，用于计算亏损
 
         # 网格价格（从低到高）
         step = (self.upper_price - self.lower_price) / self.grid_count
@@ -69,6 +77,7 @@ class GridTrader:
             self.capital = allocated
             self.per_grid_value = self.capital / self.grid_count
             logger.info(f"[网格] 分配资金: {self.capital:.2f} USDT")
+        self._initial_capital = self.capital
 
         # 杠杆 + 保证金模式
         await self.exchange.set_margin_mode(self.symbol, "isolated", self.leverage)
@@ -146,8 +155,44 @@ class GridTrader:
 
     async def _tick(self):
         """
-        检查挂单成交情况，成交一笔补一笔
+        每个 tick 做三件事:
+        1. 边界保护：检查价格是否长期超出区间
+        2. 全局止损：检查累计亏损是否触发熔断
+        3. 处理已成交挂单
         """
+        # 每日快照
+        self.stats.daily_snapshot(self._initial_capital + self.stats.data["total_pnl"])
+
+        # 1. 边界保护
+        try:
+            ticker = await self.exchange.fetch_ticker(self.symbol)
+            curr_price = float(ticker.get("last", 0) or 0)
+
+            if curr_price > 0:
+                if curr_price < self.lower_price or curr_price > self.upper_price:
+                    self._out_of_range_count += 1
+                    logger.warning(
+                        f"[网格] 价格 {curr_price:.4f} 超出区间 "
+                        f"[{self.lower_price}, {self.upper_price}] "
+                        f"({self._out_of_range_count}/{self.boundary_breakout_bars})"
+                    )
+                    if self._out_of_range_count >= self.boundary_breakout_bars:
+                        await self._handle_boundary_breakout(curr_price)
+                        return
+                else:
+                    if self._out_of_range_count > 0:
+                        logger.info(f"[网格] 价格回归区间，重置突破计数")
+                    self._out_of_range_count = 0
+        except Exception as e:
+            logger.warning(f"[网格] 边界检查失败: {e}")
+
+        # 2. 全局止损
+        try:
+            await self._check_max_loss(curr_price)
+        except Exception as e:
+            logger.warning(f"[网格] 止损检查失败: {e}")
+
+        # 3. 处理已成交挂单
         try:
             current_orders = await self.exchange.client.fetch_open_orders(self.symbol)
         except Exception as e:
@@ -155,8 +200,6 @@ class GridTrader:
             return
 
         current_ids = {o["id"] for o in current_orders}
-
-        # 找出已经不在挂单列表里的（=已成交或被取消）
         filled_orders = []
         for price, info in list(self._open_orders.items()):
             if info["id"] not in current_ids:
@@ -165,6 +208,85 @@ class GridTrader:
 
         for price, info in filled_orders:
             await self._handle_filled_order(price, info)
+
+    async def _handle_boundary_breakout(self, curr_price: float):
+        """
+        价格连续多次超出区间 → 自动重新调整网格
+        以当前价为中心，重新计算 ±10% 区间
+        """
+        old_lower = self.lower_price
+        old_upper = self.upper_price
+
+        # 新区间：当前价 ±10%
+        new_lower = curr_price * 0.90
+        new_upper = curr_price * 1.10
+        new_step = (new_upper - new_lower) / self.grid_count
+
+        logger.warning(
+            f"[网格] 触发边界自动调整 | "
+            f"旧区间[{old_lower:.4f}, {old_upper:.4f}] → "
+            f"新区间[{new_lower:.4f}, {new_upper:.4f}]"
+        )
+
+        await self.notifier.send(
+            f"⚠️ <b>网格自动调整区间</b>\n"
+            f"标的: <code>{self.symbol}</code>\n"
+            f"当前价: <code>{curr_price:.4f}</code>\n"
+            f"旧区间: <code>{old_lower:.4f} ~ {old_upper:.4f}</code>\n"
+            f"新区间: <code>{new_lower:.4f} ~ {new_upper:.4f}</code>\n"
+            f"取消所有旧挂单并重新挂单"
+        )
+
+        # 取消所有旧挂单
+        await self._cancel_all_orders()
+        self._open_orders.clear()
+
+        # 更新区间
+        self.lower_price = new_lower
+        self.upper_price = new_upper
+        self.grid_step = new_step
+        self.grid_prices = [new_lower + i * new_step for i in range(self.grid_count + 1)]
+        self._out_of_range_count = 0
+
+        # 重新挂网格
+        await self._place_initial_grid()
+
+    async def _check_max_loss(self, curr_price: float):
+        """
+        计算当前总价值 = 现金 + 持仓市值 - 持仓成本（用 OKX 持仓接口的 unrealized PnL）
+        亏损 > max_loss_pct 则全部平仓
+        """
+        try:
+            positions = await self.exchange.client.fetch_positions([self.symbol])
+            for p in positions:
+                if p.get("symbol") == self.symbol:
+                    upnl = float(p.get("unrealizedPnl", 0) or 0)
+                    initial_margin = float(p.get("initialMargin", 0) or 0)
+                    if initial_margin > 0:
+                        loss_pct = upnl / self._initial_capital
+                        if loss_pct < -self.max_loss_pct:
+                            logger.error(
+                                f"[网格] 触发全局止损! 浮亏 {upnl:.2f} USDT "
+                                f"({loss_pct:.2%}) > 阈值 {self.max_loss_pct:.0%}"
+                            )
+                            await self.notifier.send(
+                                f"🛑 <b>网格全局止损</b>\n"
+                                f"标的: <code>{self.symbol}</code>\n"
+                                f"浮亏: <code>{upnl:.2f} USDT</code> ({loss_pct:.2%})\n"
+                                f"取消所有挂单并平仓"
+                            )
+                            await self._cancel_all_orders()
+                            self._open_orders.clear()
+                            # 平掉所有持仓
+                            contracts = float(p.get("contracts", 0) or 0)
+                            if contracts > 0:
+                                side = "sell" if p.get("side") == "long" else "buy"
+                                await self.exchange.create_market_order(self.symbol, side, contracts)
+                            self._running = False  # 停止运行
+                            return
+                    break
+        except Exception as e:
+            logger.debug(f"[网格] 检查止损失败: {e}")
 
     async def _handle_filled_order(self, price: float, info: dict):
         """处理一笔成交，在反向方向挂新单"""
@@ -197,6 +319,13 @@ class GridTrader:
                 next_side = "buy"
 
             self._trade_count += 1
+            # 记录到 stats（卖出时计算 PnL，买入只记数）
+            grid_pnl = 0.0
+            if side == "sell":
+                # 利润 = 一格价差 × 数量 × contract_size - 手续费
+                grid_pnl = self.grid_step * filled_amt * self.contract_size - avg_price * filled_amt * self.contract_size * 0.0004
+            self.stats.record_trade(self.symbol, side, grid_pnl, reason=f"网格成交@{avg_price:.4f}")
+
             logger.success(
                 f"[网格] {side} 成交 {filled_amt}张 @ {avg_price:.4f} | "
                 f"持仓:{self._position_contracts} | 在 {next_price} 挂 {next_side}"

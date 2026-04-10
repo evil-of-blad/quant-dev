@@ -25,6 +25,7 @@ from loguru import logger
 from core.exchange import AsyncExchange
 from core.notifier import TelegramNotifier
 from core.allocation import CapitalAllocator
+from core.stats import StrategyStats
 
 
 class FundingArbTrader:
@@ -34,6 +35,7 @@ class FundingArbTrader:
         self.exchange = AsyncExchange(config)
         self.notifier = TelegramNotifier(config)
         self.allocator = CapitalAllocator(config)
+        self.stats = StrategyStats("funding_arb")
 
         arb_cfg = config.get("funding_arb", {})
         self.symbols: list[str] = arb_cfg.get("symbols", ["ETH/USDT:USDT"])
@@ -225,6 +227,9 @@ class FundingArbTrader:
             await asyncio.sleep(self.check_interval)
 
     async def _tick(self):
+        # 每日快照
+        self.stats.daily_snapshot(self.capital + self._total_earned)
+
         for symbol in self.symbols:
             try:
                 await self._process_symbol(symbol)
@@ -484,6 +489,7 @@ class FundingArbTrader:
         if spot_ok and swap_ok:
             earned = pos["total_earned"]
             self._positions.pop(symbol, None)
+            self.stats.record_trade(symbol, "arb", earned, reason=f"费率降至{rate:.4%}")
             logger.success(
                 f"[费率套利] 平仓完成 {symbol} | 累计费率收益:{earned:.4f} USDT | "
                 f"退出原因: 费率降至 {rate:.4%}"

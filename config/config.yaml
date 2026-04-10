@@ -13,11 +13,12 @@ exchange:
 
 trading:
   symbols:           # 永续合约交易对（OKX 格式：BTC/USDT:USDT）
-    - BTC/USDT:USDT
-    - XRP/USDT:USDT
+    - BTC/USDT:USDT  # 流动性最好，5年4年盈利
+    - LINK/USDT:USDT # 5年5年盈利，最稳健
+    - BCH/USDT:USDT  # 4/5年盈利，分散用
   timeframe: 4h      # 时间周期: 1m 5m 15m 1h 4h 1d
   base_currency: USDT
-  leverage: 5        # 杠杆倍数
+  leverage: 3        # 杠杆倍数（从5x保守降到3x）
   margin_mode: isolated  # isolated=逐仓, cross=全仓
 
 risk:
@@ -45,21 +46,20 @@ backtest:
   end_date: "2024-12-31"
 
 strategy:
-  name: bollinger_bands       # 策略名: ma_crossover / rsi / bollinger_bands / combo / adaptive
+  name: ma_crossover          # 主策略：双均线交叉 + SMA200 趋势过滤
   params:
-    # MA Crossover 参数（网格优化最优: fast=20, slow=30）
-    fast_period: 20
-    slow_period: 30
-    trend_period: 200          # 趋势过滤均线（SMA200）
-    trend_filter: true         # 开启趋势过滤
-    # RSI 参数
+    # MA Crossover 参数（5年回测最优: 15/50 + SMA200过滤）
+    fast_period: 15
+    slow_period: 50
+    trend_period: 200
+    trend_filter: true
+    # RSI 参数（保留以便快速切换策略）
     rsi_period: 14
     rsi_oversold: 30
     rsi_overbought: 70
-    # Bollinger Bands 参数（跨周期优化最优）
+    # Bollinger Bands 参数（保留）
     bb_period: 30
     bb_std: 2.0
-    rsi_oversold: 35
 
 # =============================================
 # 资金分配（多策略隔离，按总账户 USDT 百分比分配）
@@ -75,13 +75,17 @@ allocation:
 # 网格交易配置
 # =============================================
 grid:
-  symbol: LINK/USDT:USDT       # 交易标的（回测最优）
-  upper_price: 9.85            # 网格上限（覆盖30天高点）
-  lower_price: 8.05            # 网格下限（覆盖30天低点）
+  symbol: UNI/USDT:USDT        # 高波动率，适合网格（30天波动34%）
+  upper_price: 4.30            # 网格上限
+  lower_price: 2.85            # 网格下限
   grid_count: 20               # 网格数量
   capital: 400.0               # 总资金 (USDT)
   leverage: 2                  # 杠杆倍数
   check_interval: 60           # 检查间隔（秒）
+  max_grids_per_tick: 3        # 单次最多跨3格
+  # 边界保护
+  boundary_breakout_bars: 12   # 价格连续N次检查在区间外（12次×60s=12分钟）则自动调整区间
+  max_loss_pct: 0.20           # 最大亏损20%全平止损
 
 # =============================================
 # 资金费率套利配置
@@ -97,6 +101,15 @@ funding_arb:
   exit_rate: 0.00005           # 费率 ≤ 0.005% 时平仓
   leverage: 1                  # 合约端杠杆（套利建议 1x）
   check_interval: 3600         # 检查间隔（秒），1小时
+
+# =============================================
+# 市场告警引擎配置（独立运行，不交易，仅推送提醒）
+# =============================================
+alert:
+  check_interval: 1800       # 检查间隔（秒），30分钟
+  warning_repeat_hours: 3    # WARNING 级别多久重复推送一次
+  critical_repeat_hours: 6   # CRITICAL 级别多久重复推送一次
+  daily_report_hour: 22      # 每日定时日报小时（UTC）
 
 telegram:
   enabled: false              # 改成 true 开启通知

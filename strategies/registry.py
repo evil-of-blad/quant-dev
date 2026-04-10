@@ -6,6 +6,7 @@ from .rsi_strategy import RSIStrategy
 from .bollinger_bands import BollingerBandsStrategy
 from .combo import ComboStrategy
 from .adaptive import AdaptiveStrategy
+from .smart_adaptive import SmartAdaptiveStrategy
 from .td_sequential import TDSequentialStrategy
 
 STRATEGY_REGISTRY = {
@@ -14,6 +15,7 @@ STRATEGY_REGISTRY = {
     "bollinger_bands": BollingerBandsStrategy,
     "combo": ComboStrategy,
     "adaptive": AdaptiveStrategy,
+    "smart_adaptive": SmartAdaptiveStrategy,
     "td_sequential": TDSequentialStrategy,
 }
 

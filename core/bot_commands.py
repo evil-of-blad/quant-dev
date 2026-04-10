@@ -95,6 +95,8 @@ class TelegramBot:
             await self._cmd_balance()
         elif cmd == "/realloc":
             await self._cmd_realloc()
+        elif cmd == "/report":
+            await self._cmd_report()
         elif cmd == "/help":
             await self._cmd_help()
         else:
@@ -351,6 +353,46 @@ class TelegramBot:
             await self._send(f"🚨 重新分配失败: <code>{str(e)[:200]}</code>")
 
     # ------------------------------------------------------------------
+    # /report — 跨策略统计日报
+    # ------------------------------------------------------------------
+    async def _cmd_report(self):
+        try:
+            from core.stats import get_all_summaries
+            summaries = get_all_summaries()
+            if not summaries:
+                await self._send("📋 暂无策略统计数据")
+                return
+
+            total_pnl = sum(s["total_pnl"] for s in summaries)
+            total_today = sum(s["today_pnl"] for s in summaries)
+            total_trades = sum(s["total_trades"] for s in summaries)
+
+            lines = []
+            for s in summaries:
+                pnl_emoji = "📈" if s["total_pnl"] >= 0 else "📉"
+                today_emoji = "🟢" if s["today_pnl"] >= 0 else "🔴"
+                lines.append(
+                    f"\n{pnl_emoji} <b>{s['strategy']}</b>"
+                    f"\n  累计盈亏: <code>{s['total_pnl']:+.2f}</code>"
+                    f"\n  今日: {today_emoji} <code>{s['today_pnl']:+.2f}</code>"
+                    f"\n  交易: {s['total_trades']} 笔 | 胜率 {s['win_rate']:.0%}"
+                    f"\n  最大单笔: 盈 {s['max_pnl']:+.2f} / 亏 {s['max_loss']:+.2f}"
+                )
+
+            msg = (
+                f"📊 <b>策略统计日报</b>\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"<b>总览</b>\n"
+                f"  累计盈亏: <code>{total_pnl:+.2f} USDT</code>\n"
+                f"  今日盈亏: <code>{total_today:+.2f} USDT</code>\n"
+                f"  总交易数: {total_trades}\n"
+                + "".join(lines)
+            )
+            await self._send(msg)
+        except Exception as e:
+            await self._send(f"🚨 查询失败: <code>{str(e)[:200]}</code>")
+
+    # ------------------------------------------------------------------
     # /help
     # ------------------------------------------------------------------
     async def _cmd_help(self):
@@ -360,6 +402,7 @@ class TelegramBot:
             "/status  — 查看持仓和权益\n"
             "/signal  — 查看当前策略信号\n"
             "/pnl     — 查看累计盈亏\n"
+            "/report  — 查看跨策略统计日报\n"
             "/balance — 查看账户余额和资金分配\n"
             "/realloc — 重新分配布林带资金\n"
             "/help    — 显示帮助"

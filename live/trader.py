@@ -10,6 +10,7 @@ from core.risk import RiskManager
 from core.notifier import TelegramNotifier
 from core.bot_commands import TelegramBot
 from core.allocation import CapitalAllocator
+from core.stats import StrategyStats
 from strategies.base import BaseStrategy
 
 
@@ -28,6 +29,7 @@ class LiveTrader:
         self.bot = TelegramBot(config, self)
         self.allocator = CapitalAllocator(config)
         self.allocated_capital: float = 0.0
+        self.stats = StrategyStats("bollinger_or_ma")
 
         t_cfg = config["trading"]
         self.symbols: list[str] = t_cfg["symbols"]
@@ -156,6 +158,9 @@ class LiveTrader:
         # 使用分配的资金 + 当前已用保证金作为策略权益（与其他策略隔离）
         used_margin = self._used_margin()
         equity = self.allocated_capital  # 风控基准始终用分配额度
+
+        # 每日快照
+        self.stats.daily_snapshot(self.allocated_capital + self.stats.data["total_pnl"])
         logger.info(
             f"[{datetime.utcnow().strftime('%H:%M:%S')}] "
             f"分配:{self.allocated_capital:.2f} | 已用:{used_margin:.2f} | "
@@ -293,6 +298,7 @@ class LiveTrader:
             self._positions.pop(symbol, None)
             self.risk.reset_trailing(symbol)
             self.bot.record_trade(symbol, pos["direction"], pnl, reason)
+            self.stats.record_trade(symbol, pos["direction"], pnl, reason=reason)
             logger.success(f"[平仓] {symbol} @ {filled:.2f} | PnL:{pnl:+.2f} | 原因:{reason}")
             return pnl
         except Exception as e:
