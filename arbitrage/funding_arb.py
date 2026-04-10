@@ -423,22 +423,67 @@ class FundingArbTrader:
         return contracts, actual_base
 
     async def _close_arb(self, symbol: str, spot_symbol: str, pos: dict, rate: float):
-        """平套利仓位：卖现货 (base coin数量) + 平空合约 (张数)"""
-        try:
-            # 1. 卖出现货
-            logger.info(f"[费率套利] {spot_symbol} 卖出现货 {pos['spot_amount']}")
-            await self.exchange.client.create_market_order(
-                spot_symbol, "sell", pos["spot_amount"],
-                params={"tdMode": "cash"}
-            )
+        """
+        平套利仓位（独立处理两边，避免一边失败导致状态污染）:
+        1. 拉真实余额，按可用数量卖现货（防手续费扣损导致余额不足）
+        2. 平空合约
+        3. 任一失败都告警，但不互相阻塞
+        """
+        base_coin = symbol.split("/")[0]
+        spot_ok = False
+        swap_ok = False
 
-            # 2. 平掉合约空单（用张数）
+        # ---- 1. 卖出现货 ----
+        try:
+            # 重新拉余额，避免精度/手续费问题
+            balance = await self.exchange.fetch_balance()
+            spot_free = balance.get(base_coin, {}).get("free", 0) or 0
+
+            # 取「策略记录」和「实际余额」的较小值，且不能超过 free
+            sell_amount = min(pos["spot_amount"], spot_free)
+
+            # 按交易所精度截断
+            markets = self.exchange.public.markets
+            if spot_symbol in markets:
+                m_spot = markets[spot_symbol]
+                precision = m_spot.get("precision", {}).get("amount", 0.000001)
+                if isinstance(precision, int):
+                    factor = 10 ** precision
+                    sell_amount = int(sell_amount * factor) / factor
+                else:
+                    sell_amount = int(sell_amount / precision) * precision
+
+            min_amt = m_spot.get("limits", {}).get("amount", {}).get("min", 0) or 0 if spot_symbol in markets else 0
+
+            if sell_amount >= min_amt and sell_amount > 0:
+                logger.info(f"[费率套利] {spot_symbol} 卖出现货 {sell_amount} (策略记录:{pos['spot_amount']}, 实际可用:{spot_free})")
+                await self.exchange.client.create_market_order(
+                    spot_symbol, "sell", sell_amount,
+                    params={"tdMode": "cash"}
+                )
+                spot_ok = True
+            else:
+                logger.warning(
+                    f"[费率套利] {spot_symbol} 现货数量 {sell_amount} 小于最小 {min_amt}，跳过卖出"
+                )
+                spot_ok = True  # 视为已处理（无可卖）
+        except Exception as e:
+            logger.error(f"[费率套利] 现货卖出失败: {e}")
+            await self.notifier.notify_error(f"费率套利-现货卖出失败 {symbol}: {str(e)[:200]}")
+
+        # ---- 2. 平掉合约空单（无论现货是否成功都尝试）----
+        try:
             logger.info(f"[费率套利] {symbol} 平空合约 {pos['swap_amount']} 张")
             await self.exchange.create_market_order(symbol, "buy", pos["swap_amount"])
+            swap_ok = True
+        except Exception as e:
+            logger.error(f"[费率套利] 合约平仓失败: {e}")
+            await self.notifier.notify_error(f"费率套利-合约平仓失败 {symbol}: {str(e)[:200]}")
 
+        # ---- 3. 双边都成功才清除内存仓位，否则保留供下次重试 ----
+        if spot_ok and swap_ok:
             earned = pos["total_earned"]
             self._positions.pop(symbol, None)
-
             logger.success(
                 f"[费率套利] 平仓完成 {symbol} | 累计费率收益:{earned:.4f} USDT | "
                 f"退出原因: 费率降至 {rate:.4%}"
@@ -450,10 +495,18 @@ class FundingArbTrader:
                 f"退出原因: 费率降至 {rate:.4%}\n"
                 f"持仓时长: 自 {pos['opened_at']}"
             )
-
-        except Exception as e:
-            logger.error("[费率套利] 平仓失败: " + str(e))
-            await self.notifier.notify_error(f"费率套利平仓失败 {symbol}: {e}")
+        else:
+            logger.warning(
+                f"[费率套利] {symbol} 平仓部分失败 (spot_ok={spot_ok}, swap_ok={swap_ok})，"
+                f"保留内存仓位，下次 tick 会重试"
+            )
+            await self.notifier.send(
+                f"⚠️ <b>套利平仓部分失败</b>\n"
+                f"{symbol}\n"
+                f"现货: {'✅' if spot_ok else '❌'}\n"
+                f"合约: {'✅' if swap_ok else '❌'}\n"
+                f"<i>下次 tick 会重试</i>"
+            )
 
     async def _report(self):
         """定时播报"""
