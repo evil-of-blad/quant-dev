@@ -44,7 +44,7 @@ class LiveTrader:
         await self.exchange.init()
 
         for symbol in self.symbols:
-            await self.exchange.set_margin_mode(symbol, self.margin_mode)
+            await self.exchange.set_margin_mode(symbol, self.margin_mode, self.leverage)
             await self.exchange.set_leverage(symbol, self.leverage, self.margin_mode)
 
         self._markets = self.exchange.public.markets if hasattr(self.exchange, 'public') else {}

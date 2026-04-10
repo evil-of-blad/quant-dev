@@ -53,7 +53,7 @@ class FundingArbTrader:
         # 套利用1x杠杆，每个标的都校验
         self._lev_ok: dict[str, bool] = {}
         for symbol in self.symbols:
-            await self.exchange.set_margin_mode(symbol, "isolated")
+            await self.exchange.set_margin_mode(symbol, "isolated", self.leverage)
             ok = await self.exchange.set_leverage(symbol, self.leverage, "isolated")
             self._lev_ok[symbol] = ok
             if not ok:
@@ -242,13 +242,26 @@ class FundingArbTrader:
             if rate < self.exit_rate:
                 await self._close_arb(symbol, spot_symbol, pos, rate)
             else:
-                # 记录本次费率收益
-                estimated_earn = rate * pos["swap_amount"] * pos.get("entry_price", 0)
+                # 实时计算收益：rate × 名义价值
+                # 名义价值 = 合约张数 × 每张面值 × 当前价格
+                try:
+                    ticker = await self.exchange.fetch_ticker(symbol)
+                    current_price = float(ticker.get("last", 0) or 0)
+                except Exception:
+                    current_price = pos.get("entry_price", 0) or 0
+
+                contract_size = float(
+                    self.exchange.public.markets.get(symbol, {})
+                        .get("contractSize", 1) or 1
+                )
+                notional = pos["swap_amount"] * contract_size * current_price
+                estimated_earn = rate * notional
                 pos["total_earned"] += estimated_earn
                 self._total_earned += estimated_earn
                 logger.info(
-                    f"[费率套利] {symbol} 持仓中 | 当前费率:{rate:.4%} | "
-                    f"本次收益≈{estimated_earn:.4f} | 累计:{pos['total_earned']:.4f}"
+                    f"[费率套利] {symbol} 持仓中 | 费率:{rate:.4%} | "
+                    f"名义:{notional:.2f} USDT | 本次:{estimated_earn:+.4f} | "
+                    f"累计:{pos['total_earned']:+.4f}"
                 )
         else:
             # 无仓位：检查是否该开仓

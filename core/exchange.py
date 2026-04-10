@@ -162,18 +162,21 @@ class AsyncExchange:
     async def fetch_ticker(self, symbol: str) -> dict:
         return await self.public.fetch_ticker(symbol)
 
-    async def set_margin_mode(self, symbol: str, margin_mode: str = "isolated"):
-        """设置保证金模式: isolated=逐仓, cross=全仓"""
+    async def set_margin_mode(self, symbol: str, margin_mode: str = "isolated", leverage: int = 1):
+        """
+        设置保证金模式: isolated=逐仓, cross=全仓
+        OKX 要求同时传 lever 参数，所以这里默认要求传入杠杆值
+        """
         ccxt_mode = "isolated" if margin_mode == "isolated" else "cross"
         try:
-            await self.client.set_margin_mode(ccxt_mode, symbol)
-            logger.info(f"保证金模式设置: {symbol} → {margin_mode}")
+            await self.client.set_margin_mode(ccxt_mode, symbol, params={"lever": leverage})
+            logger.info(f"保证金模式设置: {symbol} → {margin_mode} ({leverage}x)")
         except Exception as e:
-            # 已经是该模式时 OKX 会报错，忽略
-            if "already" in str(e).lower() or "margin mode" in str(e).lower():
-                logger.info(f"保证金模式已是 {margin_mode}，无需修改")
+            err = str(e)
+            if "already" in err.lower():
+                logger.info(f"保证金模式已是 {margin_mode}")
             else:
-                logger.warning("设置保证金模式失败: " + str(e))
+                logger.debug("设置保证金模式: " + err)
 
     async def set_leverage(self, symbol: str, leverage: int, margin_mode: str = "isolated") -> bool:
         """
