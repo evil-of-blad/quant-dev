@@ -177,56 +177,70 @@ class AsyncExchange:
 
     async def set_leverage(self, symbol: str, leverage: int, margin_mode: str = "isolated") -> bool:
         """
-        设置杠杆。OKX 在 buy/sell 单向持仓模式下需要分别设置 long 和 short 两个方向。
-        返回 True=成功，False=失败。
+        设置杠杆。OKX buy/sell 单向持仓模式 mgnMode=isolated 时必须使用 net 持仓方向。
+        分三种尝试方式，确保一定能设置成功。
+        返回 True=验证后实际杠杆=期望值，False=失败。
         """
-        success = True
-        # OKX 单向持仓模式需要分别设置多空两个方向
-        for pos_side in ["long", "short"]:
+        instId = symbol.replace("/USDT:USDT", "-USDT-SWAP")  # OKX 原生格式
+
+        # 方式1: net 持仓（单向持仓模式专用）
+        attempts = [
+            {"mgnMode": margin_mode, "posSide": "net"},
+            {"mgnMode": margin_mode},
+            {"mgnMode": margin_mode, "posSide": "long"},
+            {"mgnMode": margin_mode, "posSide": "short"},
+        ]
+
+        for params in attempts:
             try:
-                await self.client.set_leverage(
-                    leverage, symbol,
-                    params={"mgnMode": margin_mode, "posSide": pos_side}
-                )
+                await self.client.set_leverage(leverage, symbol, params=params)
+                logger.debug(f"set_leverage 成功: {symbol} params={params}")
             except Exception as e:
-                err = str(e)
-                # 兼容非 OKX 或不要 posSide 的情况
-                if "posSide" in err or "Parameter" in err:
-                    try:
-                        await self.client.set_leverage(leverage, symbol, params={"mgnMode": margin_mode})
-                        break
-                    except Exception as e2:
-                        logger.warning(f"设置杠杆失败 {symbol} {leverage}x: " + str(e2))
-                        success = False
-                        break
-                else:
-                    logger.warning(f"设置杠杆失败 {symbol} {pos_side} {leverage}x: " + err)
-                    success = False
-                    break
+                logger.debug(f"set_leverage 失败 params={params}: {e}")
+                continue
 
-        if success:
-            logger.info(f"杠杆设置: {symbol} {leverage}x ({margin_mode})")
-
-        # 验证：拉取实际杠杆确认
+        # 校验
         actual = await self.get_leverage(symbol)
-        if actual and actual != leverage:
-            logger.warning(f"杠杆校验失败 {symbol}: 期望 {leverage}x, 实际 {actual}x")
+        if actual and actual == leverage:
+            logger.info(f"杠杆设置成功: {symbol} {leverage}x ({margin_mode})")
+            return True
+        else:
+            logger.warning(f"⚠️ 杠杆校验失败 {symbol}: 期望 {leverage}x, 实际 {actual}x")
             return False
-        return success
 
     async def get_leverage(self, symbol: str) -> int:
-        """从交易所拉取当前实际杠杆"""
+        """
+        从交易所拉取当前实际杠杆。
+        优先从持仓获取，没持仓时调用 OKX 专用接口 GET /api/v5/account/leverage-info
+        """
+        # 先试持仓
         try:
             positions = await self.client.fetch_positions([symbol])
             for p in positions:
                 if p.get("symbol") == symbol:
                     lev = p.get("leverage")
                     if lev:
-                        return int(lev)
-            return None
+                        return int(float(lev))
+        except Exception:
+            pass
+
+        # 没持仓时用 OKX leverage-info 接口
+        try:
+            instId = symbol.replace("/USDT:USDT", "-USDT-SWAP")
+            resp = await self.client.private_get_account_leverage_info({
+                "instId": instId,
+                "mgnMode": "isolated",
+            })
+            data = resp.get("data", [])
+            if data:
+                # OKX 返回多条（multi posSide），取最大值
+                levs = [int(float(d.get("lever", 0))) for d in data if d.get("lever")]
+                if levs:
+                    return max(levs)
         except Exception as e:
-            logger.debug(f"获取杠杆失败 {symbol}: {e}")
-            return None
+            logger.debug(f"leverage-info 接口失败 {symbol}: {e}")
+
+        return None
 
     async def ensure_leverage(self, symbol: str, leverage: int, margin_mode: str = "isolated") -> bool:
         """
