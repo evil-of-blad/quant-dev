@@ -99,29 +99,31 @@ class FundingArbTrader:
 
         warnings = []
         recovered = []
+        markets = self.exchange.public.markets
 
         for symbol in self.symbols:
             spot_symbol = symbol.replace(":USDT", "")
-            base_coin = symbol.split("/")[0]  # ETH/USDT:USDT → ETH
+            base_coin = symbol.split("/")[0]
+            contract_size = float(markets.get(symbol, {}).get("contractSize", 1) or 1)
 
-            # 合约空单数量
-            swap_short = 0.0
+            # 合约空单张数
+            swap_contracts = 0.0
             swap_entry = 0.0
             for p in positions:
                 if p.get("symbol") == symbol and p.get("side") == "short":
-                    swap_short = abs(float(p.get("contracts", 0) or 0))
+                    swap_contracts = abs(float(p.get("contracts", 0) or 0))
                     swap_entry = float(p.get("entryPrice", 0) or 0)
                     break
 
-            # 现货余额
+            # 现货余额（base coin 数量）
             spot_balance = balance.get(base_coin, {}).get("total", 0) or 0
+            # 合约对应的 base 数量（用于和现货对比）
+            swap_base_equivalent = swap_contracts * contract_size
 
-            if swap_short > 1e-9 and spot_balance > 1e-9:
-                # 双边都有，按较小值重建
-                amount = min(swap_short, spot_balance)
+            if swap_contracts > 1e-9 and spot_balance > 1e-9:
                 self._positions[symbol] = {
-                    "spot_amount": amount,
-                    "swap_amount": amount,
+                    "spot_amount": spot_balance,
+                    "swap_amount": swap_contracts,
                     "entry_price": swap_entry or 0,
                     "spot_entry": 0,
                     "swap_entry": swap_entry or 0,
@@ -129,25 +131,25 @@ class FundingArbTrader:
                     "total_earned": 0.0,
                     "opened_at": "(启动恢复)",
                 }
-                recovered.append(f"{symbol} 数量={amount:.6f}")
+                recovered.append(f"{symbol} 合约={swap_contracts}张 现货={spot_balance}")
                 logger.info(
-                    f"[费率套利] 恢复持仓: {symbol} | 现货:{spot_balance:.6f} 空单:{swap_short:.6f}"
+                    f"[费率套利] 恢复持仓: {symbol} | "
+                    f"合约:{swap_contracts}张(={swap_base_equivalent:.4f} {base_coin}) | "
+                    f"现货:{spot_balance:.4f} {base_coin}"
                 )
 
-                # 检查不平衡
-                if abs(swap_short - spot_balance) > max(swap_short, spot_balance) * 0.05:
+                # 检查对冲是否平衡（按 base coin 数量比较）
+                if abs(swap_base_equivalent - spot_balance) > max(swap_base_equivalent, spot_balance) * 0.05:
                     warnings.append(
-                        f"{symbol} 现货({spot_balance:.6f})与空单({swap_short:.6f})不平衡"
+                        f"{symbol} 对冲不平衡: 合约≈{swap_base_equivalent:.4f} 现货={spot_balance:.4f} {base_coin}"
                     )
 
-            elif swap_short > 1e-9 and spot_balance < 1e-9:
-                # 只有合约空单，没有现货
-                warnings.append(f"{symbol} 只有合约空单 {swap_short:.6f}，没有对应现货")
-                logger.warning(f"[费率套利] 孤立空单: {symbol} {swap_short}")
+            elif swap_contracts > 1e-9 and spot_balance < 1e-9:
+                warnings.append(f"{symbol} 只有合约空单 {swap_contracts}张，没有对应现货")
+                logger.warning(f"[费率套利] 孤立空单: {symbol} {swap_contracts}张")
 
-            elif swap_short < 1e-9 and spot_balance > 1e-9:
-                # 只有现货，没有合约空单
-                warnings.append(f"{base_coin} 只有现货 {spot_balance:.6f}，没有对冲空单")
+            elif swap_contracts < 1e-9 and spot_balance > 1e-9:
+                warnings.append(f"{base_coin} 只有现货 {spot_balance:.4f}，没有对冲空单")
                 logger.warning(f"[费率套利] 孤立现货: {base_coin} {spot_balance}")
 
         if recovered:
@@ -243,63 +245,66 @@ class FundingArbTrader:
         """
         开套利仓位（原子化）:
         1. 校验杠杆
-        2. 先尝试合约空单（容易因杠杆/数量限制失败）
-        3. 合约成功后再买现货
-        4. 现货失败则立刻平掉合约空单回滚
+        2. 计算合约张数 + 对应 base coin 数量
+        3. 先做空合约
+        4. 再用对应的 base 数量买入现货
+        5. 现货失败则平掉合约空单回滚
         """
         per_capital = self.capital * self.per_symbol_pct
 
-        # 下单前校验杠杆
         if not await self.exchange.ensure_leverage(symbol, self.leverage, "isolated"):
-            logger.warning(f"[费率套利] {symbol} 杠杆校验失败，跳过本次开仓")
+            logger.warning(f"[费率套利] {symbol} 杠杆校验失败，跳过")
             return
 
         try:
             ticker = await self.exchange.fetch_ticker(symbol)
             price = ticker["last"]
-            amount = self._calc_amount(symbol, per_capital, price)
-            if amount <= 0:
+
+            # ⚠️ 关键：合约下单要用「张数」，现货下单要用「base coin 数量」
+            contracts, base_amount = self._calc_contracts_and_base(symbol, per_capital, price)
+            if contracts <= 0 or base_amount <= 0:
+                logger.warning(f"[费率套利] {symbol} 计算的数量为0，跳过")
                 return
 
-            # ---- 1. 先做空合约 ----
-            logger.info(f"[费率套利] {symbol} 做空合约 {amount:.6f} @ {price:.4f}")
+            logger.info(
+                f"[费率套利] {symbol} 准备开仓 | 价格:{price:.4f} | "
+                f"合约:{contracts}张 | 现货:{base_amount} | 资金:{per_capital:.2f}"
+            )
+
+            # ---- 1. 先做空合约（amount=张数）----
             try:
-                swap_order = await self.exchange.create_market_order(symbol, "sell", amount)
+                swap_order = await self.exchange.create_market_order(symbol, "sell", contracts)
                 swap_filled = swap_order.get("average", price) or price
-                swap_amount = swap_order.get("filled", amount) or amount
             except Exception as e:
                 logger.error(f"[费率套利] 合约空单失败: {e}")
                 await self.notifier.notify_error(f"费率套利-合约空单失败 {symbol}: {e}")
                 return
 
-            # ---- 2. 再买入现货 ----
-            logger.info(f"[费率套利] {spot_symbol} 买入现货 {swap_amount:.6f} @ {price:.4f}")
+            # ---- 2. 再买入现货（amount=base coin 数量）----
             try:
                 spot_order = await self.exchange.client.create_market_order(
-                    spot_symbol, "buy", swap_amount,
+                    spot_symbol, "buy", base_amount,
                     params={"tdMode": "cash"}
                 )
                 spot_filled = spot_order.get("average", price) or price
             except Exception as e:
-                # ---- 现货失败，回滚合约空单 ----
                 logger.error(f"[费率套利] 现货买入失败，回滚合约空单: {e}")
                 try:
-                    await self.exchange.create_market_order(symbol, "buy", swap_amount)
+                    await self.exchange.create_market_order(symbol, "buy", contracts)
                     logger.info(f"[费率套利] 合约空单已回滚")
                     await self.notifier.notify_error(
                         f"费率套利-现货失败已回滚 {symbol}: {str(e)[:200]}"
                     )
                 except Exception as rb_err:
-                    logger.error(f"[费率套利] 回滚失败！需要手动处理: {rb_err}")
                     await self.notifier.notify_error(
                         f"⚠️ 套利回滚失败！请手动平掉 {symbol} 空单！原因: {rb_err}"
                     )
                 return
 
-            # ---- 3. 双向都成功，记录仓位 ----
+            # ---- 3. 双向都成功 ----
             self._positions[symbol] = {
-                "spot_amount": swap_amount,
-                "swap_amount": swap_amount,
+                "spot_amount": base_amount,    # 现货按 base coin 数量
+                "swap_amount": contracts,      # 合约按张数
                 "entry_price": price,
                 "spot_entry": spot_filled,
                 "swap_entry": swap_filled,
@@ -310,15 +315,14 @@ class FundingArbTrader:
 
             logger.success(
                 f"[费率套利] 开仓完成 {symbol} | 费率:{rate:.4%} | "
-                f"数量:{swap_amount:.6f} | 资金:{per_capital:.2f} USDT"
+                f"合约:{contracts}张 | 现货:{base_amount} | 资金:{per_capital:.2f}"
             )
             await self.notifier.send(
                 f"💰 <b>费率套利开仓</b>\n"
                 f"标的: <code>{symbol}</code>\n"
                 f"费率: <code>{rate:.4%}</code> (年化 {rate*3*365*100:.1f}%)\n"
-                f"数量: <code>{swap_amount:.6f}</code>\n"
-                f"现货买入: <code>{spot_filled:.4f}</code>\n"
-                f"合约做空: <code>{swap_filled:.4f}</code>\n"
+                f"合约空: <code>{contracts}</code> 张 @ {swap_filled:.4f}\n"
+                f"现货买: <code>{base_amount}</code> @ {spot_filled:.4f}\n"
                 f"占用资金: <code>{per_capital:.2f} USDT</code>"
             )
 
@@ -326,38 +330,61 @@ class FundingArbTrader:
             logger.error("[费率套利] 开仓异常: " + str(e), exc_info=True)
             await self.notifier.notify_error(f"费率套利开仓异常 {symbol}: {e}")
 
-    def _calc_amount(self, symbol: str, capital: float, price: float) -> float:
-        """计算开仓量并按精度截断"""
-        amount = capital / price
+    def _calc_contracts_and_base(self, symbol: str, capital: float, price: float) -> tuple[float, float]:
+        """
+        计算 (合约张数, 现货 base coin 数量)。
+        OKX 永续合约的 amount 参数是「张数」，每张面值=contractSize 个 base coin。
+
+        例如:
+          - DOGE-USDT-SWAP contractSize=1000，1张=1000个DOGE
+          - ETH-USDT-SWAP contractSize=0.1，1张=0.1个ETH
+          - SOL-USDT-SWAP contractSize=1，1张=1个SOL
+        """
         markets = self.exchange.public.markets
-        if symbol in markets:
-            m = markets[symbol]
-            precision = m.get("precision", {}).get("amount", 0.001)
-            min_amount = m.get("limits", {}).get("amount", {}).get("min", 0)
+        m = markets.get(symbol, {})
 
-            if isinstance(precision, int):
-                factor = 10 ** precision
-                amount = int(amount * factor) / factor
-            else:
-                amount = int(amount / precision) * precision
+        contract_size = float(m.get("contractSize", 1) or 1)
+        precision = m.get("precision", {}).get("amount", 1)
+        min_amount = m.get("limits", {}).get("amount", {}).get("min", 0) or 0
 
-            if amount < min_amount:
-                logger.warning(f"[费率套利] {symbol} 数量 {amount} 小于最小值 {min_amount}")
-                return 0.0
-        return amount
+        # 想要的名义价值 = capital，对应 base coin 数量
+        base_needed = capital / price
+
+        # 转成合约张数
+        contracts = base_needed / contract_size
+
+        # 按精度截断
+        if isinstance(precision, int):
+            factor = 10 ** precision
+            contracts = int(contracts * factor) / factor
+        else:
+            contracts = int(contracts / precision) * precision
+
+        if contracts < min_amount:
+            logger.warning(
+                f"[费率套利] {symbol} 张数 {contracts} 小于最小 {min_amount}，"
+                f"需要至少 {min_amount * contract_size * price:.2f} USDT"
+            )
+            return 0.0, 0.0
+
+        # 实际 base coin 数量（合约张数对应的）= contracts × contract_size
+        # 现货端按这个数量买入，确保对冲一致
+        actual_base = contracts * contract_size
+
+        return contracts, actual_base
 
     async def _close_arb(self, symbol: str, spot_symbol: str, pos: dict, rate: float):
-        """平套利仓位：卖现货 + 平空合约"""
+        """平套利仓位：卖现货 (base coin数量) + 平空合约 (张数)"""
         try:
             # 1. 卖出现货
-            logger.info(f"[费率套利] {spot_symbol} 卖出现货 {pos['spot_amount']:.6f}")
+            logger.info(f"[费率套利] {spot_symbol} 卖出现货 {pos['spot_amount']}")
             await self.exchange.client.create_market_order(
                 spot_symbol, "sell", pos["spot_amount"],
                 params={"tdMode": "cash"}
             )
 
-            # 2. 平掉合约空单
-            logger.info(f"[费率套利] {symbol} 平空合约 {pos['swap_amount']:.6f}")
+            # 2. 平掉合约空单（用张数）
+            logger.info(f"[费率套利] {symbol} 平空合约 {pos['swap_amount']} 张")
             await self.exchange.create_market_order(symbol, "buy", pos["swap_amount"])
 
             earned = pos["total_earned"]
