@@ -1,18 +1,23 @@
 """
-网格交易策略
+网格交易策略（限价单挂单版）
 
 原理:
   在 [lower_price, upper_price] 区间内均分 N 个价格网格。
-  价格每跨过一个网格往下 → 买入一份
-  价格每跨过一个网格往上 → 卖出一份
-  适合震荡行情，自动高抛低吸
+  启动时:
+    1. 取消该 symbol 所有旧挂单
+    2. 同步交易所真实持仓
+    3. 必要时市价建立中性持仓（N/2 份库存）
+    4. 在每个格点挂限价单（当前价以下挂买单，以上挂卖单）
 
-特点:
-  - 永续合约（用低杠杆 1~2x）
-  - 中性起步：开仓时持有 N/2 份，向上向下都有空间
-  - 触及边界则停止该方向操作
-  - 启动时自动同步交易所持仓
-  - 状态持久化到 grid_state.json，重启不丢失上次格点位置
+  运行时:
+    每隔 N 秒查询挂单状态:
+      - 已成交的 buy 单 → 在上一格挂 sell 单（锁定利润）
+      - 已成交的 sell 单 → 在下一格挂 buy 单（继续低买）
+
+优势:
+  - 限价单 Maker 费率（OKX 0.02%）vs 市价单 Taker（0.05%）
+  - 不会因为滑点亏损
+  - 程序短暂离线挂单依然生效
 """
 import asyncio
 import json
@@ -37,29 +42,21 @@ class GridTrader:
         self.upper_price: float = g.get("upper_price", 80000.0)
         self.lower_price: float = g.get("lower_price", 65000.0)
         self.grid_count: int = g.get("grid_count", 20)
-        # capital 由 allocator 在 start() 中动态计算
         self.capital: float = g.get("capital", 0.0)
         self.leverage: int = g.get("leverage", 2)
-        self.check_interval: int = g.get("check_interval", 60)  # 60s 检查一次
-        self.max_grids_per_tick: int = g.get("max_grids_per_tick", 3)  # 单次最多跨3格
+        self.check_interval: int = g.get("check_interval", 30)  # 30s 检查挂单
 
-        # 网格价格列表（从低到高）
+        # 网格价格（从低到高）
         step = (self.upper_price - self.lower_price) / self.grid_count
         self.grid_prices = [self.lower_price + i * step for i in range(self.grid_count + 1)]
         self.grid_step = step
-
-        # 每格仓位：总资金均分，每格对应一份合约张数
-        # 中性持仓：起步持有 N/2 格的库存
         self.per_grid_value = self.capital / self.grid_count
 
         self._running = False
-        self._last_grid_idx: int = None  # 上次价格在哪个格区间
-        self._position_contracts: float = 0.0  # 当前持仓张数
-        self._total_pnl: float = 0.0
+        self._position_contracts: float = 0.0
+        # price (rounded) -> {"id": str, "side": "buy"/"sell"}
+        self._open_orders: dict[float, dict] = {}
         self._trade_count: int = 0
-
-        # 状态文件
-        self._state_file = os.path.join("logs", "grid_state.json")
 
     # ------------------------------------------------------------------
     async def start(self):
@@ -73,70 +70,57 @@ class GridTrader:
             self.per_grid_value = self.capital / self.grid_count
             logger.info(f"[网格] 分配资金: {self.capital:.2f} USDT")
 
-        # 设置杠杆 + 校验
+        # 杠杆 + 保证金模式
         await self.exchange.set_margin_mode(self.symbol, "isolated", self.leverage)
         if not await self.exchange.set_leverage(self.symbol, self.leverage, "isolated"):
             logger.error(f"[网格] {self.symbol} 杠杆设置失败，无法启动")
-            await self.notifier.notify_error(f"网格交易启动失败: {self.symbol} 杠杆设置异常")
+            await self.notifier.notify_error(f"网格交易启动失败: {self.symbol} 杠杆异常")
             return
 
         # 加载市场信息
         self._markets = self.exchange.public.markets
         m = self._markets.get(self.symbol, {})
         self.contract_size = float(m.get("contractSize", 1) or 1)
-        self.precision = m.get("precision", {}).get("amount", 1)
+        self.amount_precision = m.get("precision", {}).get("amount", 1)
+        self.price_precision = m.get("precision", {}).get("price", 0.01)
 
-        # 计算每格对应张数
-        # 名义价值 per_grid_value，对应 base coin 数量 = per_grid_value / 中间价
+        # 计算每格张数
         mid_price = (self.upper_price + self.lower_price) / 2
         base_per_grid = self.per_grid_value * self.leverage / mid_price
-        contracts_per_grid = base_per_grid / self.contract_size
-        self.contracts_per_grid = self._round_amount(contracts_per_grid)
+        self.contracts_per_grid = self._round_amount(base_per_grid / self.contract_size)
 
         if self.contracts_per_grid <= 0:
-            logger.error(f"[网格] {self.symbol} 每格张数为0，资金太少或格数太多")
-            await self.notifier.notify_error(
-                f"网格交易: {self.symbol} 每格张数=0，请增加资金或减少格数"
-            )
+            logger.error(f"[网格] 每格张数为0，资金太少或格数太多")
+            await self.notifier.notify_error(f"网格交易: 每格张数=0")
             return
 
-        # 同步交易所真实持仓
+        # 同步真实持仓
         await self._reconcile_position()
 
-        # 加载上次状态（last_grid_idx）
-        self._load_state()
+        # 取消所有旧挂单（防止状态污染）
+        await self._cancel_all_orders()
 
-        # 一致性检查：如果 state 中的 idx 离当前价格太远，重置
-        try:
-            ticker = await self.exchange.fetch_ticker(self.symbol)
-            curr_price = float(ticker.get("last", 0) or 0)
-            if curr_price > 0 and self._last_grid_idx is not None:
-                curr_idx = self._find_grid_index(curr_price)
-                gap = abs(curr_idx - self._last_grid_idx)
-                if gap > self.max_grids_per_tick:
-                    logger.warning(
-                        f"[网格] state 中 last_idx={self._last_grid_idx} 与当前 idx={curr_idx} "
-                        f"相差 {gap} 格，超过补单上限，重置为当前格点"
-                    )
-                    self._last_grid_idx = curr_idx
-                    self._save_state()
-        except Exception as e:
-            logger.warning(f"[网格] 启动一致性检查失败: {e}")
+        # 建立初始中性库存（N/2 张）
+        await self._setup_initial_position()
+
+        # 挂初始网格
+        await self._place_initial_grid()
 
         logger.info(
             f"[网格] 启动 | {self.symbol} | "
-            f"区间:[{self.lower_price:.2f}, {self.upper_price:.2f}] | "
-            f"{self.grid_count}格 | 格距:{self.grid_step:.2f} | "
-            f"每格:{self.contracts_per_grid}张 | 持仓:{self._position_contracts}张"
+            f"区间:[{self.lower_price}, {self.upper_price}] | "
+            f"{self.grid_count}格 | 每格:{self.contracts_per_grid}张 | "
+            f"持仓:{self._position_contracts}张 | 挂单:{len(self._open_orders)}个"
         )
         await self.notifier.send(
-            f"📊 <b>网格交易启动</b>\n"
+            f"📊 <b>网格交易启动 (限价单)</b>\n"
             f"标的: <code>{self.symbol}</code>\n"
-            f"区间: <code>{self.lower_price:.2f} ~ {self.upper_price:.2f}</code>\n"
-            f"格数: <code>{self.grid_count}</code> (格距 {self.grid_step:.2f})\n"
+            f"区间: <code>{self.lower_price} ~ {self.upper_price}</code>\n"
+            f"格数: <code>{self.grid_count}</code> (格距 {self.grid_step:.4f})\n"
             f"每格: <code>{self.contracts_per_grid}</code> 张\n"
-            f"杠杆: {self.leverage}x\n"
-            f"当前持仓: <code>{self._position_contracts}</code> 张"
+            f"杠杆: {self.leverage}x | Maker费率\n"
+            f"持仓: <code>{self._position_contracts}</code> 张\n"
+            f"挂单: <code>{len(self._open_orders)}</code> 个"
         )
 
         self._running = True
@@ -144,9 +128,9 @@ class GridTrader:
 
     async def stop(self):
         self._running = False
-        self._save_state()
+        # 退出时不取消挂单（让它们留在 OKX 继续生效）
         await self.exchange.close()
-        logger.info("[网格] 已停止")
+        logger.info("[网格] 已停止（挂单保留）")
 
     # ------------------------------------------------------------------
     async def _main_loop(self):
@@ -161,132 +145,178 @@ class GridTrader:
             await asyncio.sleep(self.check_interval)
 
     async def _tick(self):
-        ticker = await self.exchange.fetch_ticker(self.symbol)
-        price = float(ticker.get("last", 0) or 0)
-        if price <= 0:
-            return
-
-        # 区间外：跳过交易但记录
-        if price < self.lower_price:
-            logger.warning(f"[网格] 价格 {price:.2f} 跌破下限 {self.lower_price:.2f}，等待回归")
-            return
-        if price > self.upper_price:
-            logger.warning(f"[网格] 价格 {price:.2f} 突破上限 {self.upper_price:.2f}，等待回归")
-            return
-
-        current_idx = self._find_grid_index(price)
-
-        if self._last_grid_idx is None:
-            self._last_grid_idx = current_idx
-            logger.info(f"[网格] 初始化 当前价:{price:.4f} 格点:{current_idx}")
-            self._save_state()
-            return
-
-        if current_idx == self._last_grid_idx:
-            return
-
-        # 跨格了
-        diff = current_idx - self._last_grid_idx
-        abs_diff = abs(diff)
-
-        # ★ 安全保护：单次跨格不超过 max_grids_per_tick
-        # 长时间停机或重启后，价格可能跨过很多格，不补做停机期间的交易，
-        # 直接重置基准，避免一次性大额错单或与持仓数量不匹配
-        if abs_diff > self.max_grids_per_tick:
-            logger.warning(
-                f"[网格] 跨格 {abs_diff} 超过单次上限 {self.max_grids_per_tick}，"
-                f"重置基准跳过补单 (last={self._last_grid_idx} → curr={current_idx})"
-            )
-            await self.notifier.send(
-                f"⚠️ <b>网格跨格异常</b>\n"
-                f"标的: <code>{self.symbol}</code>\n"
-                f"跨过 {abs_diff} 格 (上限 {self.max_grids_per_tick})\n"
-                f"已重置基准，跳过补单（可能是重启或停机过久）"
-            )
-            self._last_grid_idx = current_idx
-            self._save_state()
-            return
-
-        if diff < 0:
-            await self._buy_grid(abs_diff, price)
-        else:
-            await self._sell_grid(diff, price)
-
-        self._last_grid_idx = current_idx
-        self._save_state()
-
-    def _find_grid_index(self, price: float) -> int:
-        """返回价格落在哪个格区间（0 ~ grid_count-1）"""
-        if price <= self.lower_price:
-            return 0
-        if price >= self.upper_price:
-            return self.grid_count - 1
-        idx = int((price - self.lower_price) / self.grid_step)
-        return min(idx, self.grid_count - 1)
-
-    async def _buy_grid(self, grids: int, price: float):
-        amount = self.contracts_per_grid * grids
-        amount = self._round_amount(amount)
-        if amount <= 0:
-            return
-
-        # 校验杠杆
-        if not await self.exchange.ensure_leverage(self.symbol, self.leverage, "isolated"):
-            logger.warning("[网格] 杠杆校验失败，跳过买入")
-            return
-
+        """
+        检查挂单成交情况，成交一笔补一笔
+        """
         try:
-            order = await self.exchange.create_market_order(self.symbol, "buy", amount)
-            filled = order.get("average", price) or price
-            self._position_contracts += amount
-            self._trade_count += 1
-            logger.success(
-                f"[网格] 买入 {amount}张 @ {filled:.2f} | 持仓:{self._position_contracts}张 | "
-                f"跨格:{grids}"
-            )
-            await self.notifier.send(
-                f"🟢 <b>网格买入</b>\n"
-                f"价格: <code>{filled:.2f}</code>\n"
-                f"数量: <code>{amount}</code> 张 (跨{grids}格)\n"
-                f"持仓: <code>{self._position_contracts}</code> 张"
-            )
+            current_orders = await self.exchange.client.fetch_open_orders(self.symbol)
         except Exception as e:
-            logger.error(f"[网格] 买入失败: {e}")
-            await self.notifier.notify_error(f"网格买入失败: {e}")
+            logger.warning(f"[网格] 拉取挂单失败: {e}")
+            return
 
-    async def _sell_grid(self, grids: int, price: float):
-        amount = self.contracts_per_grid * grids
-        amount = self._round_amount(amount)
+        current_ids = {o["id"] for o in current_orders}
 
-        # 不能卖出超过持仓
-        if amount > self._position_contracts:
-            amount = self._round_amount(self._position_contracts)
-            if amount <= 0:
-                logger.info("[网格] 持仓为0，跳过卖出")
+        # 找出已经不在挂单列表里的（=已成交或被取消）
+        filled_orders = []
+        for price, info in list(self._open_orders.items()):
+            if info["id"] not in current_ids:
+                filled_orders.append((price, info))
+                del self._open_orders[price]
+
+        for price, info in filled_orders:
+            await self._handle_filled_order(price, info)
+
+    async def _handle_filled_order(self, price: float, info: dict):
+        """处理一笔成交，在反向方向挂新单"""
+        try:
+            order_detail = await self.exchange.client.fetch_order(info["id"], self.symbol)
+            status = order_detail.get("status")
+
+            if status != "closed":
+                # 被取消了，不补单
+                logger.info(f"[网格] 订单 {info['id']} 状态={status}，不补单")
                 return
 
-        if not await self.exchange.ensure_leverage(self.symbol, self.leverage, "isolated"):
-            logger.warning("[网格] 杠杆校验失败，跳过卖出")
+            filled_amt = float(order_detail.get("filled", 0) or 0)
+            avg_price = float(order_detail.get("average", price) or price)
+            side = info["side"]
+
+            if filled_amt <= 0:
+                return
+
+            # 更新持仓
+            if side == "buy":
+                self._position_contracts += filled_amt
+                # 在上一格挂 sell 单
+                next_price = self._round_price(price + self.grid_step)
+                next_side = "sell"
+            else:
+                self._position_contracts -= filled_amt
+                # 在下一格挂 buy 单
+                next_price = self._round_price(price - self.grid_step)
+                next_side = "buy"
+
+            self._trade_count += 1
+            logger.success(
+                f"[网格] {side} 成交 {filled_amt}张 @ {avg_price:.4f} | "
+                f"持仓:{self._position_contracts} | 在 {next_price} 挂 {next_side}"
+            )
+
+            await self.notifier.send(
+                f"{'🟢' if side=='buy' else '🔴'} <b>网格成交</b>\n"
+                f"方向: {side}\n"
+                f"价格: <code>{avg_price:.4f}</code>\n"
+                f"数量: <code>{filled_amt}</code> 张\n"
+                f"持仓: <code>{self._position_contracts}</code> 张\n"
+                f"补单: {next_side} @ <code>{next_price}</code>"
+            )
+
+            # 在反向格点挂新单
+            if self.lower_price <= next_price <= self.upper_price:
+                await self._place_order(next_price, next_side)
+            else:
+                logger.info(f"[网格] {next_price} 超出区间，不补单")
+
+        except Exception as e:
+            logger.error(f"[网格] 处理成交失败 {info['id']}: {e}", exc_info=True)
+
+    # ------------------------------------------------------------------
+    # 挂单 / 取消
+    # ------------------------------------------------------------------
+    async def _cancel_all_orders(self):
+        """取消该 symbol 所有挂单"""
+        try:
+            orders = await self.exchange.client.fetch_open_orders(self.symbol)
+            if not orders:
+                logger.info("[网格] 无旧挂单")
+                return
+
+            logger.info(f"[网格] 取消 {len(orders)} 个旧挂单...")
+            for o in orders:
+                try:
+                    await self.exchange.client.cancel_order(o["id"], self.symbol)
+                    logger.debug(f"[网格] 取消 {o['id']} {o['side']} @ {o['price']}")
+                except Exception as e:
+                    logger.warning(f"[网格] 取消 {o['id']} 失败: {e}")
+        except Exception as e:
+            logger.warning(f"[网格] 拉取旧挂单失败: {e}")
+
+    async def _setup_initial_position(self):
+        """
+        建立中性库存：网格策略需要先持有 N/2 份合约才能往上挂卖单。
+        如果当前持仓不足，市价补足；超过则不动。
+        """
+        target = self.contracts_per_grid * (self.grid_count // 2)
+        diff = target - self._position_contracts
+        diff = self._round_amount(diff)
+
+        if diff < self.contracts_per_grid * 0.5:
+            logger.info(
+                f"[网格] 当前持仓 {self._position_contracts} 张，"
+                f"目标 {target} 张，差额可忽略，跳过初始建仓"
+            )
             return
 
         try:
-            order = await self.exchange.create_market_order(self.symbol, "sell", amount)
-            filled = order.get("average", price) or price
-            self._position_contracts -= amount
-            self._trade_count += 1
+            logger.info(f"[网格] 市价建立初始库存 {diff} 张...")
+            order = await self.exchange.create_market_order(self.symbol, "buy", diff)
+            filled = order.get("filled", diff) or diff
+            self._position_contracts += filled
             logger.success(
-                f"[网格] 卖出 {amount}张 @ {filled:.2f} | 持仓:{self._position_contracts}张 | "
-                f"跨格:{grids}"
-            )
-            await self.notifier.send(
-                f"🔴 <b>网格卖出</b>\n"
-                f"价格: <code>{filled:.2f}</code>\n"
-                f"数量: <code>{amount}</code> 张 (跨{grids}格)\n"
-                f"持仓: <code>{self._position_contracts}</code> 张"
+                f"[网格] 初始库存建立完成: {filled} 张，当前持仓 {self._position_contracts}"
             )
         except Exception as e:
-            logger.error(f"[网格] 卖出失败: {e}")
-            await self.notifier.notify_error(f"网格卖出失败: {e}")
+            logger.error(f"[网格] 初始建仓失败: {e}")
+            await self.notifier.notify_error(f"网格初始建仓失败: {e}")
+
+    async def _place_initial_grid(self):
+        """
+        在所有格点挂限价单:
+          - 当前价以下：buy
+          - 当前价以上：sell（需要持仓支撑）
+          - 离当前价最近的一格不挂（避免立即成交）
+        """
+        try:
+            ticker = await self.exchange.fetch_ticker(self.symbol)
+            curr_price = float(ticker["last"])
+        except Exception as e:
+            logger.error(f"[网格] 获取当前价失败: {e}")
+            return
+
+        # 离当前价 < 1/2 格距的不挂
+        skip_distance = self.grid_step / 2
+
+        for price in self.grid_prices:
+            if abs(price - curr_price) < skip_distance:
+                continue
+
+            if price < curr_price:
+                # 挂 buy 单
+                await self._place_order(self._round_price(price), "buy")
+            else:
+                # 挂 sell 单（需要有持仓）
+                if self._position_contracts >= self.contracts_per_grid:
+                    await self._place_order(self._round_price(price), "sell")
+
+    async def _place_order(self, price: float, side: str):
+        """挂一个限价单"""
+        # 不重复挂相同价格
+        if price in self._open_orders:
+            logger.debug(f"[网格] {price} 已有挂单，跳过")
+            return
+
+        try:
+            order = await self.exchange.client.create_limit_order(
+                self.symbol, side, self.contracts_per_grid, price,
+                params={"tdMode": "isolated"}
+            )
+            self._open_orders[price] = {
+                "id": order["id"],
+                "side": side,
+            }
+            logger.info(f"[网格] 挂{side} {self.contracts_per_grid}张 @ {price}")
+        except Exception as e:
+            logger.error(f"[网格] 挂单失败 {side} @ {price}: {e}")
 
     # ------------------------------------------------------------------
     async def _reconcile_position(self):
@@ -302,48 +332,25 @@ class GridTrader:
                         logger.info(f"[网格] 恢复持仓: {contracts}张 (long)")
                     elif contracts > 0 and side == "short":
                         logger.warning(
-                            f"[网格] 检测到空单 {contracts}张，网格策略只做多，请手动平掉"
+                            f"[网格] 检测到空单 {contracts}张，网格只做多，请手动处理"
                         )
                         await self.notifier.notify_error(
-                            f"网格交易: {self.symbol} 检测到空单持仓，请手动平掉"
+                            f"网格交易: {self.symbol} 检测到空单，请手动平掉"
                         )
                     break
         except Exception as e:
             logger.warning(f"[网格] 同步持仓失败: {e}")
 
     def _round_amount(self, amount: float) -> float:
-        """按精度截断"""
-        if isinstance(self.precision, int):
-            factor = 10 ** self.precision
+        if isinstance(self.amount_precision, int):
+            factor = 10 ** self.amount_precision
             return int(amount * factor) / factor
         else:
-            return int(amount / self.precision) * self.precision
+            return round(int(amount / self.amount_precision) * self.amount_precision, 8)
 
-    def _save_state(self):
-        try:
-            os.makedirs(os.path.dirname(self._state_file), exist_ok=True)
-            with open(self._state_file, "w") as f:
-                json.dump({
-                    "last_grid_idx": self._last_grid_idx,
-                    "position_contracts": self._position_contracts,
-                    "trade_count": self._trade_count,
-                    "saved_at": datetime.utcnow().isoformat(),
-                }, f, indent=2)
-        except Exception as e:
-            logger.warning(f"[网格] 保存状态失败: {e}")
-
-    def _load_state(self):
-        if not os.path.exists(self._state_file):
-            return
-        try:
-            with open(self._state_file) as f:
-                state = json.load(f)
-            self._last_grid_idx = state.get("last_grid_idx")
-            self._trade_count = state.get("trade_count", 0)
-            # 持仓数量以交易所为准（_reconcile 已设置），不从文件覆盖
-            logger.info(
-                f"[网格] 恢复状态: last_grid={self._last_grid_idx}, "
-                f"trade_count={self._trade_count}"
-            )
-        except Exception as e:
-            logger.warning(f"[网格] 加载状态失败: {e}")
+    def _round_price(self, price: float) -> float:
+        if isinstance(self.price_precision, int):
+            factor = 10 ** self.price_precision
+            return int(price * factor) / factor
+        else:
+            return round(int(price / self.price_precision) * self.price_precision, 8)
