@@ -17,6 +17,8 @@ from .data_sources.fear_greed import FearGreedSource
 from .data_sources.coingecko import CoinGeckoSource
 from .data_sources.defillama import DefiLlamaSource
 from .data_sources.okx_metrics import OKXMetricsSource
+from .data_sources.okx_rubik import OKXRubikSource
+from .data_sources.hyperliquid import HyperliquidSource
 from . import indicators
 
 
@@ -35,6 +37,10 @@ INDICATOR_WEIGHTS = {
     "funding_rate": 1.0,
     "btc_dominance": 0.8,
     "stablecoin_change": 1.2,
+    "oi_change": 1.0,         # OKX 永续 OI 变化
+    "long_short_ratio": 1.0,  # OKX 大户多空比
+    "hl_premium": 1.2,        # Hyperliquid 期货溢价
+    "hl_funding": 1.0,        # Hyperliquid 资金费率
 }
 
 
@@ -55,6 +61,8 @@ class AlertEngine:
         self.coingecko = CoinGeckoSource()
         self.defillama = DefiLlamaSource()
         self.okx = OKXMetricsSource()
+        self.rubik = OKXRubikSource()
+        self.hl = HyperliquidSource()
 
         # 告警历史
         self._history_file = "logs/alert_history.json"
@@ -174,6 +182,31 @@ class AlertEngine:
                 scores.append(indicators.score_stablecoin_change(sc["week_change_pct"]))
         except Exception as e:
             logger.warning(f"[Alert] stablecoin 失败: {e}")
+
+        # OI 变化
+        try:
+            oi = await self.rubik.fetch_oi_change("BTC")
+            if oi:
+                scores.append(indicators.score_oi_change(oi["week_change_pct"]))
+        except Exception as e:
+            logger.warning(f"[Alert] oi_change 失败: {e}")
+
+        # 大户多空比
+        try:
+            ls = await self.rubik.fetch_long_short_ratio("BTC", "1D")
+            if ls:
+                scores.append(indicators.score_long_short_ratio(ls["current_ratio"]))
+        except Exception as e:
+            logger.warning(f"[Alert] long_short_ratio 失败: {e}")
+
+        # Hyperliquid BTC 状态（一次拿到 premium + funding）
+        try:
+            hl = await self.hl.fetch_btc_state()
+            if hl:
+                scores.append(indicators.score_hl_premium(hl["premium"]))
+                scores.append(indicators.score_hl_funding(hl["funding_rate"]))
+        except Exception as e:
+            logger.warning(f"[Alert] hyperliquid 失败: {e}")
 
         return scores
 
