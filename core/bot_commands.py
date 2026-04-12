@@ -103,7 +103,7 @@ class TelegramBot:
             await self._send(f"未知指令: <code>{cmd}</code>\n发送 /help 查看可用指令")
 
     # ------------------------------------------------------------------
-    # /status — 跨策略全局视图
+    # /status — 账户 + 持仓状态
     # ------------------------------------------------------------------
     async def _cmd_status(self):
         try:
@@ -113,134 +113,82 @@ class TelegramBot:
             free = usdt.get("free", 0) or 0
             total = usdt.get("total", 0) or 0
 
-            # 策略对应的标的列表
-            cfg = self.trader.config
-            bb_symbols = cfg.get("trading", {}).get("symbols", [])
-            arb_symbols = cfg.get("funding_arb", {}).get("symbols", [])
-            grid_symbol = cfg.get("grid", {}).get("symbol")
+            symbols = self.trader.config.get("trading", {}).get("symbols", [])
 
-            # 拉取所有合约持仓（一次拉完）
+            # 拉取合约持仓
             try:
-                all_positions = await ex.client.fetch_positions(None)
+                all_positions = await ex.client.fetch_positions(symbols)
             except Exception:
                 all_positions = []
 
-            # 按 symbol 整理
-            pos_map = {}
+            pos_lines = []
             for p in all_positions:
                 sym = p.get("symbol")
                 contracts = float(p.get("contracts", 0) or 0)
                 if contracts < 1e-9:
                     continue
-                pos_map[sym] = {
-                    "side": p.get("side"),
-                    "contracts": contracts,
-                    "entry": float(p.get("entryPrice", 0) or 0),
-                    "leverage": int(float(p.get("leverage", 1) or 1)),
-                    "upnl": float(p.get("unrealizedPnl", 0) or 0),
-                }
+                coin = sym.split("/")[0]
+                d = "多" if p.get("side") == "long" else "空"
+                entry = float(p.get("entryPrice", 0) or 0)
+                lev = int(float(p.get("leverage", 1) or 1))
+                upnl = float(p.get("unrealizedPnl", 0) or 0)
+                pos_lines.append(f"{'📈' if upnl >= 0 else '📉'} {coin} {d} {contracts}张 @ {entry:.2f} | {lev}x | {upnl:+.2f}U")
 
-            def fmt_pos(sym):
-                p = pos_map.get(sym)
-                if not p:
-                    return f"  ⚪ {sym}: 空仓"
-                emoji = "📈" if p["upnl"] >= 0 else "📉"
-                d = "多" if p["side"] == "long" else "空"
-                return (
-                    f"  {emoji} {sym}\n"
-                    f"     {d} {p['contracts']} 张 @ {p['entry']:.4f}\n"
-                    f"     {p['leverage']}x | 浮盈 {p['upnl']:+.2f}"
-                )
+            if not pos_lines:
+                pos_lines.append("空仓")
 
-            # 布林带
-            bb_lines = "\n".join(fmt_pos(s) for s in bb_symbols) or "  无配置"
-
-            # 套利（合约空单 + 现货多单）
-            arb_lines_list = []
-            for s in arb_symbols:
-                base = s.split("/")[0]
-                spot = balance.get(base, {}).get("total", 0) or 0
-                p = pos_map.get(s)
-                if p or spot > 0:
-                    swap_str = ""
-                    if p:
-                        d = "空" if p["side"] == "short" else "多"
-                        swap_str = f"{d}{p['contracts']}张 浮盈{p['upnl']:+.2f}"
-                    spot_str = f"现货 {spot:.4f}" if spot > 0 else ""
-                    arb_lines_list.append(f"  💰 {s}\n     {swap_str} | {spot_str}")
-                else:
-                    arb_lines_list.append(f"  ⚪ {s}: 空仓")
-            arb_lines = "\n".join(arb_lines_list) or "  无配置"
-
-            # 网格
-            if grid_symbol:
-                grid_lines = fmt_pos(grid_symbol)
-                # 加上挂单数
-                try:
-                    open_orders = await ex.client.fetch_open_orders(grid_symbol)
-                    grid_lines += f"\n     挂单: {len(open_orders)} 个"
-                except Exception:
-                    pass
-            else:
-                grid_lines = "  无配置"
-
+            used_margin = self.trader._used_margin()
             msg = (
-                f"📊 <b>全策略账户状态</b>\n"
-                f"━━━━━━━━━━━━━━━\n"
-                f"账户总额: <code>{total:.2f} USDT</code>\n"
-                f"可用余额: <code>{free:.2f} USDT</code>\n\n"
-                f"<b>布林带 (BTC/XRP):</b>\n{bb_lines}\n\n"
-                f"<b>费率套利:</b>\n{arb_lines}\n\n"
-                f"<b>网格交易:</b>\n{grid_lines}"
+                f"📊 总额 {total:.0f}U | 可用 {free:.0f}U | 保证金 {used_margin:.0f}U\n"
+                + "\n".join(pos_lines)
             )
             await self._send(msg)
         except Exception as e:
-            await self._send(f"🚨 查询失败: <code>{str(e)[:200]}</code>")
+            await self._send(f"🚨 查询失败: {str(e)[:200]}")
 
     # ------------------------------------------------------------------
-    # /signal
+    # /signal — MA 交叉 + 趋势过滤状态
     # ------------------------------------------------------------------
     async def _cmd_signal(self):
         try:
             from core.data_feed import add_indicators
+            params = self.trader.config.get("strategy", {}).get("params", {})
+            fast_p = params.get("fast_period", 15)
+            slow_p = params.get("slow_period", 50)
+            trend_p = params.get("trend_period", 200)
+
             lines = []
-
             for symbol in self.trader.symbols:
-                df = await self.trader.exchange.fetch_ohlcv(symbol, self.trader.timeframe, limit=300)
+                df = await self.trader.exchange.fetch_ohlcv(symbol, self.trader.timeframe, limit=500)
                 df = add_indicators(df)
+                price = float(df["close"].iloc[-1])
 
-                last = df.iloc[-1]
-                close = last["close"]
-                bb_upper = last.get("bb_upper", 0)
-                bb_mid = last.get("bb_mid", 0)
-                bb_lower = last.get("bb_lower", 0)
-                rsi = last.get("rsi_14", 50)
-                atr = last.get("atr_14", 0)
+                fast_col = f"sma_{fast_p}"
+                slow_col = f"sma_{slow_p}"
+                trend_col = f"sma_{trend_p}"
+                fast_ma = float(df[fast_col].iloc[-1]) if fast_col in df.columns else 0
+                slow_ma = float(df[slow_col].iloc[-1]) if slow_col in df.columns else 0
+                sma200 = float(df[trend_col].iloc[-1]) if trend_col in df.columns else 0
 
                 signal = self.trader.strategy.generate_signal(df, symbol)
                 if signal == 1:
-                    sig_text = "🟢 做多信号!"
+                    sig = "🟢 做多"
                 elif signal == -1:
-                    sig_text = "🔴 做空信号!"
+                    sig = "🔴 做空"
                 else:
-                    sig_text = "⚪ 无信号"
+                    sig = "⚪ 无"
 
-                dist_lower = (close - bb_lower) / close * 100 if close > 0 else 0
-                dist_upper = (bb_upper - close) / close * 100 if close > 0 else 0
+                coin = symbol.split("/")[0]
+                trend = "上方" if price > sma200 else "下方"
+                cross = "金叉" if fast_ma > slow_ma else "死叉"
+                gap = (price - sma200) / sma200 * 100 if sma200 > 0 else 0
 
-                lines.append(
-                    f"<b>{symbol}</b> {sig_text}\n"
-                    f"  价格: <code>{close:.2f}</code>\n"
-                    f"  布林上轨: <code>{bb_upper:.2f}</code> (距 {dist_upper:.1f}%)\n"
-                    f"  布林中轨: <code>{bb_mid:.2f}</code>\n"
-                    f"  布林下轨: <code>{bb_lower:.2f}</code> (距 {dist_lower:.1f}%)\n"
-                    f"  RSI: <code>{rsi:.1f}</code> | ATR: <code>{atr:.2f}</code>"
-                )
+                lines.append(f"{coin} {sig} | {cross} | SMA200{trend}({gap:+.1f}%)")
 
-            msg = f"📡 <b>策略信号 ({self.trader.timeframe})</b>\n━━━━━━━━━━━━━━━\n" + "\n\n".join(lines)
+            msg = f"📡 MA{fast_p}/{slow_p} + SMA{trend_p}\n" + "\n".join(lines)
             await self._send(msg)
         except Exception as e:
-            await self._send(f"🚨 查询失败: <code>{str(e)[:200]}</code>")
+            await self._send(f"🚨 查询失败: {str(e)[:200]}")
 
     # ------------------------------------------------------------------
     # /pnl
@@ -277,80 +225,51 @@ class TelegramBot:
     # /balance
     # ------------------------------------------------------------------
     async def _cmd_balance(self):
-        """显示账户余额、资金分配、利用情况"""
+        """显示账户余额和资金分配"""
         try:
             balance = await self.trader.exchange.fetch_balance()
             usdt = balance.get("USDT", {})
             total = usdt.get("total", 0) or 0
             free = usdt.get("free", 0) or 0
-            used = usdt.get("used", 0) or 0
 
             alloc_cfg = self.trader.config.get("allocation", {})
             bp = alloc_cfg.get("bollinger_pct", 0)
-            ap = alloc_cfg.get("funding_arb_pct", 0)
-            gp = alloc_cfg.get("grid_pct", 0)
-            rp = max(0, 1 - bp - ap - gp)
+            rp = max(0, 1 - bp)
 
             current_alloc = self.trader.allocated_capital
-            expected_alloc = total * bp
-            diff = expected_alloc - current_alloc
             used_margin = self.trader._used_margin()
+            avail = max(0, current_alloc - used_margin)
 
             msg = (
-                f"💰 <b>账户余额 & 资金分配</b>\n"
-                f"━━━━━━━━━━━━━━━\n"
-                f"总额: <code>{total:.2f} USDT</code>\n"
-                f"可用: <code>{free:.2f} USDT</code>\n"
-                f"占用: <code>{used:.2f} USDT</code>\n\n"
-                f"<b>按比例应分配（基于实时余额）:</b>\n"
-                f"  布林带: <code>{total*bp:.0f}</code> ({bp:.0%})\n"
-                f"  套利:   <code>{total*ap:.0f}</code> ({ap:.0%})\n"
-                f"  网格:   <code>{total*gp:.0f}</code> ({gp:.0%})\n"
-                f"  缓冲:   <code>{total*rp:.0f}</code> ({rp:.0%})\n\n"
-                f"<b>布林带实际状态:</b>\n"
-                f"  已分配: <code>{current_alloc:.0f}</code> USDT\n"
-                f"  已用保证金: <code>{used_margin:.0f}</code> USDT\n"
-                f"  本策略可用: <code>{max(0, current_alloc - used_margin):.0f}</code> USDT"
+                f"💰 总额 {total:.0f}U | 可用 {free:.0f}U\n"
+                f"策略分配 {current_alloc:.0f}U ({bp:.0%}) | 保证金 {used_margin:.0f}U | 剩余 {avail:.0f}U\n"
+                f"缓冲 {total*rp:.0f}U ({rp:.0%})"
             )
 
-            if abs(diff) > 10:
-                msg += (
-                    f"\n\n⚠️ 实时余额变化 <code>{diff:+.0f} USDT</code>\n"
-                    f"发送 /realloc 重新分配（仅布林带，套利和网格需重启）"
-                )
+            expected = total * bp
+            if abs(expected - current_alloc) > 10:
+                msg += f"\n⚠️ 余额变动 {expected - current_alloc:+.0f}U，发 /realloc 重新分配"
 
             await self._send(msg)
         except Exception as e:
-            await self._send(f"🚨 查询失败: <code>{str(e)[:200]}</code>")
+            await self._send(f"🚨 查询失败: {str(e)[:200]}")
 
     # ------------------------------------------------------------------
     # /realloc
     # ------------------------------------------------------------------
     async def _cmd_realloc(self):
-        """重新分配资金（仅当前策略：布林带）"""
+        """重新分配策略资金"""
         try:
             old = self.trader.allocated_capital
             await self.trader.allocator.init(self.trader.exchange)
             new = self.trader.allocator.get("bollinger")
             self.trader.allocated_capital = new
-
             change = new - old
-            emoji = "📈" if change > 0 else ("📉" if change < 0 else "➡️")
+            total = self.trader.allocator.total_balance
 
-            msg = (
-                f"🔄 <b>布林带资金重新分配</b>\n"
-                f"━━━━━━━━━━━━━━━\n"
-                f"原分配: <code>{old:.0f} USDT</code>\n"
-                f"新分配: <code>{new:.0f} USDT</code>\n"
-                f"变化: {emoji} <code>{change:+.0f} USDT</code>\n\n"
-                f"账户总额: <code>{self.trader.allocator.total_balance:.2f} USDT</code>\n\n"
-                f"<i>套利和网格策略需单独重启服务才能重新分配:\n"
-                f"bash scripts/start_arb.sh restart\n"
-                f"bash scripts/start_grid.sh restart</i>"
-            )
-            await self._send(msg)
+            await self._send(f"🔄 重新分配 {old:.0f} → {new:.0f}U ({change:+.0f}U) | 总额 {total:.0f}U")
         except Exception as e:
-            await self._send(f"🚨 重新分配失败: <code>{str(e)[:200]}</code>")
+            await self._send(f"🚨 重新分配失败: {str(e)[:200]}")
 
     # ------------------------------------------------------------------
     # /report — 跨策略统计日报
@@ -396,18 +315,14 @@ class TelegramBot:
     # /help
     # ------------------------------------------------------------------
     async def _cmd_help(self):
-        msg = (
-            "🤖 <b>量化机器人指令</b>\n"
-            "━━━━━━━━━━━━━━━\n"
-            "/status  — 查看持仓和权益\n"
-            "/signal  — 查看当前策略信号\n"
-            "/pnl     — 查看累计盈亏\n"
-            "/report  — 查看跨策略统计日报\n"
-            "/balance — 查看账户余额和资金分配\n"
-            "/realloc — 重新分配布林带资金\n"
-            "/help    — 显示帮助"
+        await self._send(
+            "/status — 持仓+权益\n"
+            "/signal — MA 信号状态\n"
+            "/pnl — 盈亏统计\n"
+            "/balance — 余额+分配\n"
+            "/realloc — 重新分配资金\n"
+            "/report — 策略日报"
         )
-        await self._send(msg)
 
     async def _send(self, message: str):
         try:
