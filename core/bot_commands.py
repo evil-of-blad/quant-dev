@@ -97,10 +97,12 @@ class TelegramBot:
             await self._cmd_realloc()
         elif cmd == "/report":
             await self._cmd_report()
+        elif cmd == "/alert":
+            await self._cmd_alert()
         elif cmd == "/help":
             await self._cmd_help()
         else:
-            await self._send(f"未知指令: <code>{cmd}</code>\n发送 /help 查看可用指令")
+            await self._send(f"未知指令: {cmd}\n发送 /help 查看可用指令")
 
     # ------------------------------------------------------------------
     # /status — 账户 + 持仓状态
@@ -314,10 +316,134 @@ class TelegramBot:
     # ------------------------------------------------------------------
     # /help
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # /alert — 实时市场指标分析
+    # ------------------------------------------------------------------
+    async def _cmd_alert(self):
+        """拉取 9 个市场指标，实时评分返回"""
+        try:
+            await self._send("⏳ 正在采集 9 项指标...")
+
+            from alert.data_sources.fear_greed import FearGreedSource
+            from alert.data_sources.coingecko import CoinGeckoSource
+            from alert.data_sources.defillama import DefiLlamaSource
+            from alert.data_sources.okx_metrics import OKXMetricsSource
+            from alert.data_sources.okx_rubik import OKXRubikSource
+            from alert.data_sources.hyperliquid import HyperliquidSource
+            from alert import indicators
+            from alert.alert_engine import INDICATOR_WEIGHTS
+
+            fg_src = FearGreedSource()
+            cg_src = CoinGeckoSource()
+            dl_src = DefiLlamaSource()
+            okx_src = OKXMetricsSource()
+            rubik_src = OKXRubikSource()
+            hl_src = HyperliquidSource()
+
+            scores = []
+            errors = []
+
+            # 并行拉取所有数据源
+            async def safe_fetch(name, coro):
+                try:
+                    return await coro
+                except Exception as e:
+                    errors.append(f"{name}: {e}")
+                    return None
+
+            fg, ma, fr, cg, sc, oi, ls, hl = await asyncio.gather(
+                safe_fetch("恐贪", fg_src.fetch()),
+                safe_fetch("MA200", okx_src.fetch_ma200_deviation("BTC/USDT:USDT")),
+                safe_fetch("费率", okx_src.fetch_funding_rate("BTC/USDT:USDT")),
+                safe_fetch("市值", cg_src.fetch_global()),
+                safe_fetch("稳定币", dl_src.fetch_stablecoins()),
+                safe_fetch("OI", rubik_src.fetch_oi_change("BTC")),
+                safe_fetch("多空比", rubik_src.fetch_long_short_ratio("BTC", "1D")),
+                safe_fetch("HL", hl_src.fetch_btc_state()),
+            )
+
+            if fg:
+                scores.append(indicators.score_fear_greed(fg["value"]))
+            if ma:
+                scores.append(indicators.score_ma200_deviation(ma["deviation_pct"]))
+            if fr:
+                scores.append(indicators.score_funding_rate(fr["rate"]))
+            if cg:
+                scores.append(indicators.score_btc_dominance(cg["btc_dominance"]))
+            if sc:
+                scores.append(indicators.score_stablecoin_change(sc["week_change_pct"]))
+            if oi:
+                scores.append(indicators.score_oi_change(oi["week_change_pct"]))
+            if ls:
+                scores.append(indicators.score_long_short_ratio(ls["current_ratio"]))
+            if hl:
+                scores.append(indicators.score_hl_premium(hl["premium"]))
+                scores.append(indicators.score_hl_funding(hl["funding_rate"]))
+
+            await okx_src.close()
+
+            if not scores:
+                await self._send(f"🚨 所有指标拉取失败\n{chr(10).join(errors)}")
+                return
+
+            # 综合评分
+            bull_total = bear_total = total_w = 0
+            for s in scores:
+                w = INDICATOR_WEIGHTS.get(s.name, 1.0)
+                total_w += w
+                if "bullish" in s.direction:
+                    bull_total += s.score * w
+                elif "bearish" in s.direction:
+                    bear_total += s.score * w
+
+            bull_avg = bull_total / total_w if total_w > 0 else 0
+            bear_avg = bear_total / total_w if total_w > 0 else 0
+
+            if bull_avg > bear_avg:
+                total_score, direction = bull_avg, "bullish"
+            else:
+                total_score, direction = bear_avg, "bearish"
+
+            # 分级
+            if total_score < 30:
+                level = "正常"
+            elif total_score < 50:
+                level = "关注"
+            elif total_score < 70:
+                level = "⚠️ WARNING"
+            elif total_score < 85:
+                level = "🔴 CRITICAL"
+            else:
+                level = "⚫ EMERGENCY"
+
+            dir_text = "📈看多(接近底部)" if direction == "bullish" else "📉看空(接近顶部)"
+
+            # 格式化输出
+            lines = [f"📡 市场分析 | {level} | {total_score:.0f}分 | {dir_text}"]
+            lines.append("")
+
+            # 按 score 排序，高分在前
+            for s in sorted(scores, key=lambda x: x.score, reverse=True):
+                if s.score >= 70:
+                    tag = "🔴"
+                elif s.score >= 40:
+                    tag = "🟡"
+                else:
+                    tag = "🟢"
+                lines.append(f"{tag} {s.description}")
+
+            if errors:
+                lines.append(f"\n⚠️ {len(errors)}项失败: {', '.join(e.split(':')[0] for e in errors)}")
+
+            await self._send("\n".join(lines))
+        except Exception as e:
+            await self._send(f"🚨 告警查询失败: {str(e)[:300]}")
+
     async def _cmd_help(self):
         await self._send(
             "/status — 持仓+权益\n"
             "/signal — MA 信号状态\n"
+            "/alert — 市场 9 指标分析\n"
             "/pnl — 盈亏统计\n"
             "/balance — 余额+分配\n"
             "/realloc — 重新分配资金\n"
