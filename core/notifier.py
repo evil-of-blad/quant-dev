@@ -55,86 +55,48 @@ class TelegramNotifier:
     # ------------------------------------------------------------------
     async def notify_open(self, symbol: str, direction: str, amount: float,
                           price: float, leverage: int, margin: float):
-        emoji = "🟢" if direction == "long" else "🔴"
-        msg = (
-            f"{emoji} <b>开{'多' if direction == 'long' else '空'}仓</b>\n"
-            f"标的: <code>{symbol}</code>\n"
-            f"数量: <code>{amount:.4f}</code>\n"
-            f"价格: <code>{price:.2f}</code>\n"
-            f"杠杆: {leverage}x\n"
-            f"保证金: <code>{margin:.2f} USDT</code>"
-        )
-        await self.send(msg)
+        d = "多" if direction == "long" else "空"
+        coin = symbol.split("/")[0]
+        await self.send(f"{'🟢' if direction == 'long' else '🔴'} 开{d} {coin} {amount:.4f} @ {price:.2f} | {leverage}x 保证金 {margin:.0f}U")
 
     async def notify_close(self, symbol: str, direction: str, price: float,
                            pnl: float, reason: str):
-        emoji = "✅" if pnl >= 0 else "❌"
-        msg = (
-            f"{emoji} <b>平仓 — {reason}</b>\n"
-            f"标的: <code>{symbol}</code>\n"
-            f"方向: {'多' if direction == 'long' else '空'}\n"
-            f"价格: <code>{price:.2f}</code>\n"
-            f"盈亏: <code>{pnl:+.2f} USDT</code>"
-        )
-        await self.send(msg)
+        coin = symbol.split("/")[0]
+        await self.send(f"{'✅' if pnl >= 0 else '❌'} 平仓 {coin} @ {price:.2f} | {pnl:+.2f}U | {reason}")
 
     async def notify_stop_loss(self, symbol: str, direction: str, price: float, pnl: float):
-        await self.notify_close(symbol, direction, price, pnl, "止损 🛑")
+        await self.notify_close(symbol, direction, price, pnl, "止损")
 
     async def notify_take_profit(self, symbol: str, direction: str, price: float, pnl: float):
-        await self.notify_close(symbol, direction, price, pnl, "止盈 🎯")
+        await self.notify_close(symbol, direction, price, pnl, "止盈")
 
     async def notify_trailing_stop(self, symbol: str, direction: str, price: float, pnl: float):
-        await self.notify_close(symbol, direction, price, pnl, "移动止盈 📈")
+        await self.notify_close(symbol, direction, price, pnl, "移动止盈")
 
     async def notify_circuit_breaker(self, equity: float, drawdown_pct: float):
-        msg = (
-            f"⚠️ <b>熔断触发</b>\n"
-            f"当前权益: <code>{equity:.2f} USDT</code>\n"
-            f"回撤: <code>{drawdown_pct:.2%}</code>\n"
-            f"已暂停交易，冷却后自动恢复"
-        )
-        await self.send(msg)
+        await self.send(f"⚠️ 熔断 | 权益 {equity:.0f}U | 回撤 {drawdown_pct:.1%} | 已暂停，冷却后恢复")
 
     async def notify_status(self, equity: float, cash: float,
                             positions: dict, prices: dict):
-        pos_lines = ""
+        lines = [f"📊 权益 {equity:.0f}U | 可用 {cash:.0f}U"]
         if positions:
             for sym, pos in positions.items():
                 price = prices.get(sym, pos["avg_price"])
-                direction = pos["direction"]
-                if direction == "long":
+                d = "多" if pos["direction"] == "long" else "空"
+                if pos["direction"] == "long":
                     pnl = (price - pos["avg_price"]) * pos["amount"]
                 else:
                     pnl = (pos["avg_price"] - price) * pos["amount"]
-                emoji = "📈" if pnl >= 0 else "📉"
-                pos_lines += (
-                    f"\n{emoji} {sym}: {'多' if direction == 'long' else '空'} "
-                    f"{pos['amount']:.4f} @ {pos['avg_price']:.2f} "
-                    f"| 浮动: {pnl:+.2f}"
-                )
+                coin = sym.split("/")[0]
+                lines.append(f"  {coin} {d} @ {pos['avg_price']:.2f} → {price:.2f} ({pnl:+.2f}U)")
         else:
-            pos_lines = "\n空仓"
-
-        msg = (
-            f"📊 <b>定时播报</b>\n"
-            f"权益: <code>{equity:.2f} USDT</code>\n"
-            f"可用: <code>{cash:.2f} USDT</code>\n"
-            f"<b>持仓:</b>{pos_lines}"
-        )
-        await self.send(msg)
+            lines.append("  空仓")
+        await self.send("\n".join(lines))
 
     async def notify_startup(self, strategy: str, symbols: list,
                              leverage: int, equity: float):
-        msg = (
-            f"🚀 <b>量化机器人启动</b>\n"
-            f"策略: <code>{strategy}</code>\n"
-            f"标的: <code>{', '.join(symbols)}</code>\n"
-            f"杠杆: {leverage}x\n"
-            f"初始权益: <code>{equity:.2f} USDT</code>"
-        )
-        await self.send(msg)
+        coins = [s.split("/")[0] for s in symbols]
+        await self.send(f"🚀 启动 | {strategy} | {'+'.join(coins)} {leverage}x | {equity:.0f}U")
 
     async def notify_error(self, error: str):
-        msg = f"🚨 <b>异常报警</b>\n<code>{error[:500]}</code>"
-        await self.send(msg)
+        await self.send(f"🚨 {str(error)[:300]}")
