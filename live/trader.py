@@ -36,10 +36,14 @@ class LiveTrader:
         self.timeframe: str = t_cfg["timeframe"]
         self.leverage: int = t_cfg.get("leverage", 1)
         self.margin_mode: str = t_cfg.get("margin_mode", "isolated")
-        self.poll_interval: int = self.TIMEFRAME_SECONDS.get(self.timeframe, 14400)
+        self.signal_interval: int = self.TIMEFRAME_SECONDS.get(self.timeframe, 14400)
+        self.risk_interval: int = 1800  # 止损检查间隔 30 分钟
+        self.poll_interval: int = self.risk_interval  # 主循环用快档
 
-        # 每 N 次 tick 播报一次状态（默认每6次=24h）
+        # 每 N 次 tick 播报一次状态（基于 signal_interval 计算）
+        # 例：4h 信号间隔，status_interval=6 → 每 24h 播报一次
         self._status_interval: int = config.get("telegram", {}).get("status_interval", 6)
+        self._signal_tick_count: int = 0  # 信号 tick 计数（用于状态播报）
         self._tick_count: int = 0
 
         self._running = False
@@ -244,34 +248,44 @@ class LiveTrader:
                 await self.notifier.notify_error(str(e))
             await asyncio.sleep(self.poll_interval)
 
+    def _is_signal_time(self) -> bool:
+        """判断当前是否是 4h K 线收盘时间（UTC 0/4/8/12/16/20 点附近）"""
+        now = datetime.utcnow()
+        # 4h K 线在 UTC 0,4,8,12,16,20 收盘
+        # 允许 5 分钟误差窗口
+        return now.hour % 4 == 0 and now.minute < 35
+
     async def _tick(self):
         balance = await self.exchange.fetch_balance()
         usdt_free = balance.get("USDT", {}).get("free", 0) or 0
-        # 使用分配的资金 + 当前已用保证金作为策略权益（与其他策略隔离）
         used_margin = self._used_margin()
-        equity = self.allocated_capital  # 风控基准始终用分配额度
+        equity = self.allocated_capital
 
-        # 每日快照
-        self.stats.daily_snapshot(self.allocated_capital + self.stats.data["total_pnl"])
-        logger.info(
-            f"[{datetime.utcnow().strftime('%H:%M:%S')}] "
-            f"分配:{self.allocated_capital:.2f} | 已用:{used_margin:.2f} | "
-            f"全局可用:{usdt_free:.2f}"
-        )
-
-        # 定时状态播报
         self._tick_count += 1
-        if self._tick_count % self._status_interval == 0:
-            prices = {}
-            for symbol in self.symbols:
-                try:
-                    ticker = await self.exchange.fetch_ticker(symbol)
-                    prices[symbol] = ticker.get("last", 0)
-                except Exception:
-                    pass
-            await self.notifier.notify_status(equity, usdt_free, self._positions, prices)
+        is_signal_tick = self._is_signal_time()
 
-        # 熔断检查
+        # 信号 tick 时打详细日志 + 每日快照
+        if is_signal_tick:
+            self._signal_tick_count += 1
+            self.stats.daily_snapshot(self.allocated_capital + self.stats.data["total_pnl"])
+            logger.info(
+                f"[{datetime.utcnow().strftime('%H:%M:%S')}] "
+                f"分配:{self.allocated_capital:.2f} | 已用:{used_margin:.2f} | "
+                f"全局可用:{usdt_free:.2f}"
+            )
+
+            # 定时状态播报（基于信号 tick 计数）
+            if self._signal_tick_count % self._status_interval == 0:
+                prices = {}
+                for symbol in self.symbols:
+                    try:
+                        ticker = await self.exchange.fetch_ticker(symbol)
+                        prices[symbol] = ticker.get("last", 0)
+                    except Exception:
+                        pass
+                await self.notifier.notify_status(equity, usdt_free, self._positions, prices)
+
+        # 熔断检查（每次 tick 都做）
         if self.risk.check_drawdown(equity):
             logger.warning("熔断触发，跳过信号")
             dd = (self.risk._peak_equity - equity) / self.risk._peak_equity if self.risk._peak_equity > 0 else 0
@@ -280,28 +294,56 @@ class LiveTrader:
             return
 
         for symbol in self.symbols:
-            await self._process_symbol(symbol, usdt_free, equity)
+            # 止损/止盈：每次 tick 都检查（30min）
+            await self._check_risk(symbol)
+            # 策略信号：只在 4h K 线收盘时检查
+            if is_signal_tick:
+                await self._check_signal(symbol, usdt_free, equity)
 
-    async def _process_symbol(self, symbol: str, usdt_free: float, equity: float):
+    async def _check_risk(self, symbol: str):
+        """快档：止损止盈检查（每 30 分钟）"""
+        pos = self._positions.get(symbol)
+        if not pos or pos["amount"] <= 1e-9:
+            return
+
+        try:
+            ticker = await self.exchange.fetch_ticker(symbol)
+            current_price = float(ticker.get("last", 0) or 0)
+            if current_price <= 0:
+                return
+
+            # 用最近的 ATR（从 ticker 无法拿到，用简化版：固定 ATR 比例估算）
+            # 这里拉少量 K 线算 ATR，比拉 300 根快得多
+            df = await self.exchange.fetch_ohlcv(symbol, self.timeframe, limit=20)
+            if len(df) < 15:
+                return
+            import ta
+            atr_series = ta.volatility.AverageTrueRange(
+                df["high"], df["low"], df["close"], window=14
+            ).average_true_range()
+            atr = float(atr_series.iloc[-1]) if not atr_series.empty else 0.0
+
+            direction = pos["direction"]
+            if self.risk.check_stop_loss(pos["avg_price"], current_price, direction, atr):
+                pnl = await self._close_position(symbol, pos, current_price, "止损")
+                await self.notifier.notify_stop_loss(symbol, direction, current_price, pnl)
+                return
+            if self.risk.check_take_profit(pos["avg_price"], current_price, direction, symbol):
+                pnl = await self._close_position(symbol, pos, current_price, "移动止盈")
+                await self.notifier.notify_trailing_stop(symbol, direction, current_price, pnl)
+                return
+
+        except Exception as e:
+            logger.warning(f"[风控检查] {symbol} 异常: {e}")
+
+    async def _check_signal(self, symbol: str, usdt_free: float, equity: float):
+        """慢档：策略信号检查（4h K 线收盘时）"""
         try:
             df = await self.exchange.fetch_ohlcv(symbol, self.timeframe, limit=300)
             df = add_indicators(df)
             current_price = float(df["close"].iloc[-1])
             pos = self._positions.get(symbol)
-
             atr = float(df["atr_14"].iloc[-1]) if "atr_14" in df.columns else 0.0
-
-            # 止损/止盈检查
-            if pos and pos["amount"] > 1e-9:
-                direction = pos["direction"]
-                if self.risk.check_stop_loss(pos["avg_price"], current_price, direction, atr):
-                    pnl = await self._close_position(symbol, pos, current_price, "止损")
-                    await self.notifier.notify_stop_loss(symbol, direction, current_price, pnl)
-                    return
-                if self.risk.check_take_profit(pos["avg_price"], current_price, direction, symbol):
-                    pnl = await self._close_position(symbol, pos, current_price, "移动止盈")
-                    await self.notifier.notify_trailing_stop(symbol, direction, current_price, pnl)
-                    return
 
             signal = self.strategy.generate_signal(df, symbol)
 
@@ -312,7 +354,6 @@ class LiveTrader:
                 if not self._positions.get(symbol):
                     stop = self.risk.calc_stop_price(current_price, "long", atr)
                     size = self.risk.calc_position_size(equity, current_price, stop)
-                    # 仓位上限：分配资金 - 已用保证金（自己的策略额度）
                     available_capital = max(0, self.allocated_capital - self._used_margin())
                     size = min(size, available_capital * self.leverage * 0.95 / current_price)
                     if size > 0:
@@ -325,14 +366,13 @@ class LiveTrader:
                 if not self._positions.get(symbol):
                     stop = self.risk.calc_stop_price(current_price, "short", atr)
                     size = self.risk.calc_position_size(equity, current_price, stop)
-                    # 仓位上限：分配资金 - 已用保证金（自己的策略额度）
                     available_capital = max(0, self.allocated_capital - self._used_margin())
                     size = min(size, available_capital * self.leverage * 0.95 / current_price)
                     if size > 0:
                         await self._open_position(symbol, "short", size, current_price)
 
         except Exception as e:
-            logger.error("处理 " + symbol + " 异常: " + str(e), exc_info=True)
+            logger.error("处理 " + symbol + " 信号异常: " + str(e), exc_info=True)
             await self.notifier.notify_error(f"{symbol}: {e}")
 
     def _truncate_amount(self, symbol: str, amount: float) -> float:
