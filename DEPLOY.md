@@ -178,7 +178,7 @@ sudo systemctl status quant-trader
 正常运行时输出类似：
 
 ```
-● quant-trader.service - 量化交易机器人 (OKX Bollinger Bands)
+● quant-trader.service - 量化交易机器人 (OKX MA Crossover)
      Loaded: loaded (/etc/systemd/system/quant-trader.service; enabled)
      Active: active (running) since ...
 ```
