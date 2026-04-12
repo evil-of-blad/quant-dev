@@ -67,13 +67,22 @@ class Backtester:
 
             pos = self.portfolio.get_position(symbol)
 
-            # 持仓中：止损/止盈
+            # 持仓中：止损/止盈（用 high/low 做盘中检查，更接近实盘 30min 检查行为）
             if pos and pos.amount > 1e-9:
-                # ATR 动态止损
-                if self.risk.check_stop_loss(pos.avg_price, current_price, pos.direction, atr):
-                    self._close_position(symbol, current_price, timestamp, reason="止损")
+                bar_high = float(bar.get("high", current_price))
+                bar_low = float(bar.get("low", current_price))
+
+                # ATR 动态止损：多单看 low 是否触及，空单看 high
+                stop_price = self.risk.calc_stop_price(pos.avg_price, pos.direction, atr)
+                if pos.direction == "long" and bar_low <= stop_price:
+                    # 以止损价成交（而非 close，更真实）
+                    self._close_position(symbol, stop_price, timestamp, reason="止损")
                     continue
-                # 移动止盈（或固定止盈）
+                elif pos.direction == "short" and bar_high >= stop_price:
+                    self._close_position(symbol, stop_price, timestamp, reason="止损")
+                    continue
+
+                # 移动止盈（仍用 close 判断，因为移动止盈是趋势跟踪不是精确价位）
                 if self.risk.check_take_profit(pos.avg_price, current_price, pos.direction, symbol):
                     self._close_position(symbol, current_price, timestamp, reason="移动止盈")
                     continue
