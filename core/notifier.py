@@ -77,26 +77,31 @@ class TelegramNotifier:
         await self.send(f"⚠️ 熔断 | 权益 {equity:.0f}U | 回撤 {drawdown_pct:.1%} | 已暂停，冷却后恢复")
 
     async def notify_status(self, equity: float, cash: float,
-                            positions: dict, prices: dict):
+                            positions: dict, prices: dict,
+                            contracts_to_base=None):
         lines = [f"📊 权益 {equity:.0f}U | 可用 {cash:.0f}U"]
         if positions:
             for sym, pos in positions.items():
                 price = prices.get(sym, pos["avg_price"])
                 d = "多" if pos["direction"] == "long" else "空"
+                lev = pos.get("leverage", 3)
+                # 合约张数 → base 数量
+                base_amt = contracts_to_base(sym, pos["amount"]) if contracts_to_base else pos["amount"]
                 if pos["direction"] == "long":
-                    pnl = (price - pos["avg_price"]) * pos["amount"]
+                    pnl = (price - pos["avg_price"]) * base_amt * lev
                 else:
-                    pnl = (pos["avg_price"] - price) * pos["amount"]
+                    pnl = (pos["avg_price"] - price) * base_amt * lev
                 coin = sym.split("/")[0]
-                lines.append(f"  {coin} {d} @ {pos['avg_price']:.2f} → {price:.2f} ({pnl:+.2f}U)")
+                lines.append(f"  {coin} {d} {lev}x @ {pos['avg_price']:.2f} → {price:.2f} ({pnl:+.2f}U)")
         else:
             lines.append("  空仓")
         await self.send("\n".join(lines))
 
     async def notify_startup(self, strategy: str, symbols: list,
-                             leverage: int, equity: float):
+                             leverage: int, equity: float, leverage_max: int = None):
         coins = [s.split("/")[0] for s in symbols]
-        await self.send(f"🚀 启动 | {strategy} | {'+'.join(coins)} {leverage}x | {equity:.0f}U")
+        lev_str = f"{leverage}-{leverage_max}x(ADX)" if leverage_max and leverage_max != leverage else f"{leverage}x"
+        await self.send(f"🚀 启动 | {strategy} | {'+'.join(coins)} {lev_str} | {equity:.0f}U")
 
     async def notify_error(self, error: str):
         await self.send(f"🚨 {str(error)[:300]}")

@@ -84,7 +84,7 @@ class LiveTrader:
         # 启动通知
         balance = await self.exchange.fetch_balance()
         equity = balance.get("USDT", {}).get("total", 0) or 0
-        await self.notifier.notify_startup(self.strategy.name, self.symbols, self.leverage, equity)
+        await self.notifier.notify_startup(self.strategy.name, self.symbols, self.leverage, equity, self.leverage_max)
 
         self._running = True
 
@@ -310,7 +310,7 @@ class LiveTrader:
                     prices[symbol] = ticker.get("last", 0)
                 except Exception:
                     pass
-            await self.notifier.notify_status(equity, usdt_free, self._positions, prices)
+            await self.notifier.notify_status(equity, usdt_free, self._positions, prices, self._contracts_to_base)
 
         # 熔断检查（每次 tick 都做）
         if self.risk.check_drawdown(equity):
