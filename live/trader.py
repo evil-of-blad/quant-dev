@@ -171,15 +171,22 @@ class LiveTrader:
                 continue
 
             try:
-                df = await self.exchange.fetch_ohlcv(symbol, self.timeframe, limit=300)
+                df = await self.exchange.fetch_ohlcv(symbol, self.timeframe, limit=500)
                 df = add_indicators(df)
                 price = float(df["close"].iloc[-1])
 
-                fast_ma = df["close"].rolling(fast_period).mean().iloc[-1]
-                slow_ma = df["close"].rolling(slow_period).mean().iloc[-1]
-                sma200 = df["close"].rolling(trend_period).mean().iloc[-1]
+                # 用 add_indicators 已经算好的列，避免重复 rolling 导致 NaN
+                fast_col = f"sma_{fast_period}"
+                slow_col = f"sma_{slow_period}"
+                trend_col = f"sma_{trend_period}"
+
+                # 如果 add_indicators 没有对应的列，手动计算（用原始 close）
+                fast_ma = float(df[fast_col].iloc[-1]) if fast_col in df.columns else float(df["close"].rolling(fast_period).mean().iloc[-1])
+                slow_ma = float(df[slow_col].iloc[-1]) if slow_col in df.columns else float(df["close"].rolling(slow_period).mean().iloc[-1])
+                sma200 = float(df[trend_col].iloc[-1]) if trend_col in df.columns else float(df["close"].rolling(trend_period).mean().iloc[-1])
 
                 if any(map(lambda x: x != x, [fast_ma, slow_ma, sma200])):  # NaN check
+                    logger.warning(f"[启动补仓] {symbol} MA 值含 NaN，跳过 (数据量={len(df)})")
                     continue
 
                 direction = None
@@ -187,6 +194,13 @@ class LiveTrader:
                     direction = "long"
                 elif fast_ma < slow_ma and (price < sma200 or not trend_filter):
                     direction = "short"
+
+                logger.info(
+                    f"[启动补仓] {symbol} 状态检查 | price={price:.2f} "
+                    f"SMA{fast_period}={fast_ma:.2f} SMA{slow_period}={slow_ma:.2f} "
+                    f"SMA{trend_period}={sma200:.2f} | "
+                    f"{'→ ' + direction if direction else '无信号，跳过'}"
+                )
 
                 if direction is None:
                     continue
