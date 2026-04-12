@@ -40,10 +40,9 @@ class LiveTrader:
         self.risk_interval: int = 1800  # 止损检查间隔 30 分钟
         self.poll_interval: int = self.risk_interval  # 主循环用快档
 
-        # 每 N 次 tick 播报一次状态（基于 signal_interval 计算）
-        # 例：4h 信号间隔，status_interval=6 → 每 24h 播报一次
-        self._status_interval: int = config.get("telegram", {}).get("status_interval", 6)
-        self._signal_tick_count: int = 0  # 信号 tick 计数（用于状态播报）
+        # 定时播报：每天 09:00 和 17:00 北京时间（UTC 1:00 和 9:00）
+        self._status_utc_hours: list = [1, 9]
+        self._last_status_key: str = ""  # "YYYY-MM-DD-HH" 防重复
         self._tick_count: int = 0
 
         self._running = False
@@ -266,7 +265,6 @@ class LiveTrader:
 
         # 信号 tick 时打详细日志 + 每日快照
         if is_signal_tick:
-            self._signal_tick_count += 1
             self.stats.daily_snapshot(self.allocated_capital + self.stats.data["total_pnl"])
             logger.info(
                 f"[{datetime.utcnow().strftime('%H:%M:%S')}] "
@@ -274,16 +272,19 @@ class LiveTrader:
                 f"全局可用:{usdt_free:.2f}"
             )
 
-            # 定时状态播报（基于信号 tick 计数）
-            if self._signal_tick_count % self._status_interval == 0:
-                prices = {}
-                for symbol in self.symbols:
-                    try:
-                        ticker = await self.exchange.fetch_ticker(symbol)
-                        prices[symbol] = ticker.get("last", 0)
-                    except Exception:
-                        pass
-                await self.notifier.notify_status(equity, usdt_free, self._positions, prices)
+        # 定时播报：每天 09:00 / 17:00 北京时间
+        now = datetime.utcnow()
+        status_key = f"{now.strftime('%Y-%m-%d')}-{now.hour}"
+        if now.hour in self._status_utc_hours and now.minute < 35 and status_key != self._last_status_key:
+            self._last_status_key = status_key
+            prices = {}
+            for symbol in self.symbols:
+                try:
+                    ticker = await self.exchange.fetch_ticker(symbol)
+                    prices[symbol] = ticker.get("last", 0)
+                except Exception:
+                    pass
+            await self.notifier.notify_status(equity, usdt_free, self._positions, prices)
 
         # 熔断检查（每次 tick 都做）
         if self.risk.check_drawdown(equity):
