@@ -64,6 +64,9 @@ class LiveTrader:
         # ★ 启动时仓位同步：从交易所拉取真实持仓
         await self._reconcile_positions()
 
+        # ★ 启动补仓：检查是否有信号被错过（进程重启/宕机期间）
+        await self._catchup_missed_signals()
+
         logger.info(
             f"实盘启动 | 策略:{self.strategy.name} | 标的:{self.symbols} "
             f"| 杠杆:{self.leverage}x | 保证金:{self.margin_mode} | 周期:{self.timeframe} "
@@ -139,6 +142,81 @@ class LiveTrader:
             msg = "🔄 <b>启动时恢复持仓</b>\n" + "\n".join(f"• {r}" for r in recovered)
             if warnings:
                 msg += "\n\n" + "\n".join(warnings)
+            await self.notifier.send(msg)
+
+    async def _catchup_missed_signals(self):
+        """
+        启动时检查：是否有进程宕机期间错过的交叉信号。
+
+        逻辑（仅针对 ma_crossover）:
+        - 对每个无持仓的 symbol，检查当前 MA 状态
+        - 如果 fast > slow + 价格在 SMA200 上方 → 应该持多（错过了金叉）
+        - 如果 fast < slow + 价格在 SMA200 下方 → 应该持空（错过了死叉）
+        - 直接开仓补上
+
+        注意：这只在启动时执行一次，不影响正常 tick 逻辑。
+        和 generate_signal 的区别：generate_signal 只在交叉 bar 返回信号，
+        这里是"状态检查"，用于补漏。
+        """
+        strategy_params = self.config.get("strategy", {}).get("params", {})
+        fast_period = strategy_params.get("fast_period", 15)
+        slow_period = strategy_params.get("slow_period", 50)
+        trend_period = strategy_params.get("trend_period", 200)
+        trend_filter = strategy_params.get("trend_filter", True)
+
+        caught_up = []
+        for symbol in self.symbols:
+            # 已有持仓的不需要补
+            if self._positions.get(symbol):
+                continue
+
+            try:
+                df = await self.exchange.fetch_ohlcv(symbol, self.timeframe, limit=300)
+                df = add_indicators(df)
+                price = float(df["close"].iloc[-1])
+
+                fast_ma = df["close"].rolling(fast_period).mean().iloc[-1]
+                slow_ma = df["close"].rolling(slow_period).mean().iloc[-1]
+                sma200 = df["close"].rolling(trend_period).mean().iloc[-1]
+
+                if any(map(lambda x: x != x, [fast_ma, slow_ma, sma200])):  # NaN check
+                    continue
+
+                direction = None
+                if fast_ma > slow_ma and (price > sma200 or not trend_filter):
+                    direction = "long"
+                elif fast_ma < slow_ma and (price < sma200 or not trend_filter):
+                    direction = "short"
+
+                if direction is None:
+                    continue
+
+                # 确认杠杆
+                await self.exchange.ensure_leverage(symbol, self.leverage, self.margin_mode)
+
+                atr = float(df["atr_14"].iloc[-1]) if "atr_14" in df.columns else 0.0
+                equity = self.allocated_capital
+                stop = self.risk.calc_stop_price(price, direction, atr)
+                size = self.risk.calc_position_size(equity, price, stop)
+                available_capital = max(0, self.allocated_capital - self._used_margin())
+                size = min(size, available_capital * self.leverage * 0.95 / price)
+
+                if size <= 0:
+                    continue
+
+                await self._open_position(symbol, direction, size, price)
+                caught_up.append(f"{symbol} {direction} @ {price:.2f}")
+                logger.info(
+                    f"[启动补仓] {symbol} 检测到错过的{'金叉' if direction == 'long' else '死叉'}信号 | "
+                    f"SMA{fast_period}={fast_ma:.2f} vs SMA{slow_period}={slow_ma:.2f} | "
+                    f"价格={price:.2f} vs SMA200={sma200:.2f} | 开{direction}"
+                )
+
+            except Exception as e:
+                logger.warning(f"[启动补仓] {symbol} 检查失败: {e}")
+
+        if caught_up:
+            msg = "🔄 <b>启动补仓（错过的信号）</b>\n" + "\n".join(f"• {c}" for c in caught_up)
             await self.notifier.send(msg)
 
     async def _main_loop(self):
