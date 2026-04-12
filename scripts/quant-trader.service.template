@@ -1,5 +1,5 @@
 [Unit]
-Description=量化交易机器人 (OKX Bollinger Bands)
+Description=量化交易机器人 (OKX MA Crossover)
 After=network-online.target
 Wants=network-online.target
 
@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 User=__USER__
 WorkingDirectory=__PROJECT_DIR__
-ExecStart=__VENV_DIR__/bin/python main.py --strategy bollinger_bands
+ExecStart=__VENV_DIR__/bin/python main.py
 Restart=on-failure
 RestartSec=30
 StartLimitInterval=600
