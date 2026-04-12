@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+
+# 数据缓存（可重新拉取）
+data/*.parquet
+
+# 日志
+logs/*.log
+logs/*.pid
+logs/*.png
+logs/*.csv
+logs/stats/
+logs/alert_backtest/
+
+# 运行时状态
+logs/alert_history.json
+logs/grid_state.json
+
+# 临时分析脚本
+check_*.py
+calc_*.py
+analyze_*.py
+
+# 系统文件
+.DS_Store
+*.swp
+*.swo
+*~
+
+# 敏感信息（config 里的 key 应该在服务器上手动填）
+# config/config.yaml 保留模板但注意不要提交真实 key
