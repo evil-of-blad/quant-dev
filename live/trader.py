@@ -35,6 +35,9 @@ class LiveTrader:
         self.symbols: list[str] = t_cfg["symbols"]
         self.timeframe: str = t_cfg["timeframe"]
         self.leverage: int = t_cfg.get("leverage", 1)
+        self.leverage_max: int = t_cfg.get("leverage_max", 5)  # ADX 斜率触发时的高杠杆
+        self.adx_slope_thresh: float = t_cfg.get("adx_slope_thresh", 3.0)
+        self.adx_min: float = t_cfg.get("adx_min", 15.0)
         self.margin_mode: str = t_cfg.get("margin_mode", "isolated")
         self.signal_interval: int = self.TIMEFRAME_SECONDS.get(self.timeframe, 14400)
         self.risk_interval: int = 1800  # 止损检查间隔 30 分钟
@@ -51,9 +54,11 @@ class LiveTrader:
     async def start(self):
         await self.exchange.init()
 
+        # 杠杆设为最大档（leverage_max），实际开仓时通过仓位大小控制有效杠杆
+        max_lev = max(self.leverage, self.leverage_max)
         for symbol in self.symbols:
-            await self.exchange.set_margin_mode(symbol, self.margin_mode, self.leverage)
-            await self.exchange.set_leverage(symbol, self.leverage, self.margin_mode)
+            await self.exchange.set_margin_mode(symbol, self.margin_mode, max_lev)
+            await self.exchange.set_leverage(symbol, max_lev, self.margin_mode)
 
         self._markets = self.exchange.public.markets if hasattr(self.exchange, 'public') else {}
 
@@ -208,20 +213,21 @@ class LiveTrader:
                 if direction is None:
                     continue
 
-                # 确认杠杆
-                await self.exchange.ensure_leverage(symbol, self.leverage, self.margin_mode)
+                # 动态杠杆
+                dyn_lev = self._calc_dynamic_leverage(df)
 
                 atr = float(df["atr_14"].iloc[-1]) if "atr_14" in df.columns else 0.0
                 equity = self.allocated_capital
                 stop = self.risk.calc_stop_price(price, direction, atr)
                 size = self.risk.calc_position_size(equity, price, stop)
+                size = size * dyn_lev / self.leverage
                 available_capital = max(0, self.allocated_capital - self._used_margin())
-                size = min(size, available_capital * self.leverage * 0.95 / price)
+                size = min(size, available_capital * dyn_lev * 0.95 / price)
 
                 if size <= 0:
                     continue
 
-                await self._open_position(symbol, direction, size, price)
+                await self._open_position(symbol, direction, size, price, dyn_lev)
                 caught_up.append(f"{symbol} {direction} @ {price:.2f}")
                 logger.info(
                     f"[启动补仓] {symbol} 检测到错过的{'金叉' if direction == 'long' else '死叉'}信号 | "
@@ -246,6 +252,26 @@ class LiveTrader:
                 logger.error("主循环异常: " + str(e), exc_info=True)
                 await self.notifier.notify_error(str(e))
             await asyncio.sleep(self.poll_interval)
+
+    def _calc_dynamic_leverage(self, df) -> int:
+        """
+        ADX 斜率动态杠杆：
+        - ADX 3 根 K 线变化 > 阈值 且 ADX > 最低值 → 趋势刚启动 → leverage_max
+        - 否则 → leverage（基础杠杆）
+        """
+        if "adx_14" not in df.columns or len(df) < 4:
+            return self.leverage
+
+        adx_now = float(df["adx_14"].iloc[-1])
+        adx_prev = float(df["adx_14"].iloc[-4])  # 3 根前
+        adx_slope = adx_now - adx_prev
+
+        if adx_slope > self.adx_slope_thresh and adx_now > self.adx_min:
+            logger.info(
+                f"[动态杠杆] ADX={adx_now:.1f} 斜率={adx_slope:.1f} > {self.adx_slope_thresh} → {self.leverage_max}x"
+            )
+            return self.leverage_max
+        return self.leverage
 
     def _is_signal_time(self) -> bool:
         """判断当前是否是 4h K 线收盘时间（UTC 0/4/8/12/16/20 点附近）"""
@@ -346,6 +372,9 @@ class LiveTrader:
             pos = self._positions.get(symbol)
             atr = float(df["atr_14"].iloc[-1]) if "atr_14" in df.columns else 0.0
 
+            # 动态杠杆
+            dyn_lev = self._calc_dynamic_leverage(df)
+
             signal = self.strategy.generate_signal(df, symbol)
 
             if signal == 1:
@@ -355,10 +384,11 @@ class LiveTrader:
                 if not self._positions.get(symbol):
                     stop = self.risk.calc_stop_price(current_price, "long", atr)
                     size = self.risk.calc_position_size(equity, current_price, stop)
+                    size = size * dyn_lev / self.leverage  # 按动态杠杆调整仓位
                     available_capital = max(0, self.allocated_capital - self._used_margin())
-                    size = min(size, available_capital * self.leverage * 0.95 / current_price)
+                    size = min(size, available_capital * dyn_lev * 0.95 / current_price)
                     if size > 0:
-                        await self._open_position(symbol, "long", size, current_price)
+                        await self._open_position(symbol, "long", size, current_price, dyn_lev)
 
             elif signal == -1:
                 if pos and pos["direction"] == "long":
@@ -367,10 +397,11 @@ class LiveTrader:
                 if not self._positions.get(symbol):
                     stop = self.risk.calc_stop_price(current_price, "short", atr)
                     size = self.risk.calc_position_size(equity, current_price, stop)
+                    size = size * dyn_lev / self.leverage
                     available_capital = max(0, self.allocated_capital - self._used_margin())
-                    size = min(size, available_capital * self.leverage * 0.95 / current_price)
+                    size = min(size, available_capital * dyn_lev * 0.95 / current_price)
                     if size > 0:
-                        await self._open_position(symbol, "short", size, current_price)
+                        await self._open_position(symbol, "short", size, current_price, dyn_lev)
 
         except Exception as e:
             logger.error("处理 " + symbol + " 信号异常: " + str(e), exc_info=True)
@@ -403,7 +434,9 @@ class LiveTrader:
         contracts = base_amount / contract_size
         return contracts
 
-    async def _open_position(self, symbol: str, direction: str, amount: float, price: float):
+    async def _open_position(self, symbol: str, direction: str, amount: float, price: float, lev: int = None):
+        if lev is None:
+            lev = self.leverage
         # amount 从 calc_position_size 来的是 base coin 数量，需要转成合约张数
         amount = self._base_to_contracts(symbol, amount)
         amount = self._truncate_amount(symbol, amount)
@@ -411,9 +444,9 @@ class LiveTrader:
             return
 
         # 下单前校验杠杆
-        if not await self.exchange.ensure_leverage(symbol, self.leverage, self.margin_mode):
-            logger.warning(f"[开仓拒绝] {symbol} 杠杆校验失败，跳过本次开仓")
-            await self.notifier.notify_error(f"{symbol} 杠杆配置异常，跳过开仓")
+        if not await self.exchange.ensure_leverage(symbol, lev, self.margin_mode):
+            logger.warning(f"[开仓拒绝] {symbol} 杠杆 {lev}x 校验失败，跳过本次开仓")
+            await self.notifier.notify_error(f"{symbol} 杠杆 {lev}x 配置异常，跳过开仓")
             return
 
         side = "buy" if direction == "long" else "sell"
@@ -422,16 +455,16 @@ class LiveTrader:
             filled = result.get("average", price) or price
             filled_amount = result.get("filled", amount) or amount
             base_filled = self._contracts_to_base(symbol, filled_amount)
-            margin = filled * base_filled / self.leverage
-            self._positions[symbol] = {"direction": direction, "amount": filled_amount, "avg_price": filled}
+            margin = filled * base_filled / lev
+            self._positions[symbol] = {"direction": direction, "amount": filled_amount, "avg_price": filled, "leverage": lev}
             self.risk.reset_trailing(symbol)
             logger.success(
                 f"[开{('多' if direction=='long' else '空')}] {symbol} "
                 f"{filled_amount:.4f}张(={base_filled:.6f}) @ {filled:.2f} | "
-                f"{self.leverage}x {self.margin_mode} | 保证金:{margin:.2f}"
+                f"{lev}x {self.margin_mode} | 保证金:{margin:.2f}"
             )
 
-            await self.notifier.notify_open(symbol, direction, filled_amount, filled, self.leverage, margin)
+            await self.notifier.notify_open(symbol, direction, filled_amount, filled, lev, margin)
         except Exception as e:
             logger.error("开仓失败 " + symbol + ": " + str(e))
             await self.notifier.notify_error(f"开仓失败 {symbol}: {e}")
@@ -445,14 +478,15 @@ class LiveTrader:
     async def _close_position(self, symbol: str, pos: dict, price: float, reason: str) -> float:
         """平仓，返回 PnL。pos['amount'] 是合约张数。"""
         side = "sell" if pos["direction"] == "long" else "buy"
+        pos_lev = pos.get("leverage", self.leverage)
         try:
             result = await self.exchange.create_market_order(symbol, side, pos["amount"])
             filled = result.get("average", price) or price
             base_amount = self._contracts_to_base(symbol, pos["amount"])
             if pos["direction"] == "long":
-                pnl = (filled - pos["avg_price"]) * base_amount * self.leverage
+                pnl = (filled - pos["avg_price"]) * base_amount * pos_lev
             else:
-                pnl = (pos["avg_price"] - filled) * base_amount * self.leverage
+                pnl = (pos["avg_price"] - filled) * base_amount * pos_lev
             self._positions.pop(symbol, None)
             self.risk.reset_trailing(symbol)
             self.bot.record_trade(symbol, pos["direction"], pnl, reason)
@@ -469,7 +503,8 @@ class LiveTrader:
         total = 0.0
         for sym, p in self._positions.items():
             base = self._contracts_to_base(sym, p["amount"])
-            total += base * p["avg_price"] / self.leverage
+            lev = p.get("leverage", self.leverage)
+            total += base * p["avg_price"] / lev
         return total
 
     def _estimate_equity(self, usdt_free: float) -> float:

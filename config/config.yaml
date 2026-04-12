@@ -18,8 +18,11 @@ trading:
     - BCH/USDT:USDT  # 4/5年盈利，分散用
   timeframe: 4h      # 时间周期: 1m 5m 15m 1h 4h 1d
   base_currency: USDT
-  leverage: 3        # 杠杆倍数（从5x保守降到3x）
-  margin_mode: isolated  # isolated=逐仓, cross=全仓
+  leverage: 3             # 基础杠杆（正常情况）
+  leverage_max: 5         # ADX 斜率触发时的高杠杆
+  adx_slope_thresh: 3.0   # ADX 3 根 K 线变化 > 此值视为趋势启动
+  adx_min: 15.0           # ADX 绝对值低于此值不触发（排除低位噪音）
+  margin_mode: isolated   # isolated=逐仓, cross=全仓
 
 risk:
   max_position_pct: 0.2      # 单笔最大仓位占总资金比例 (20%)
