@@ -351,7 +351,20 @@ class LiveTrader:
             return 0.0
         return amount
 
+    def _base_to_contracts(self, symbol: str, base_amount: float) -> float:
+        """
+        将 base coin 数量转换为 OKX 合约张数。
+        OKX swap 的 amount 参数是「张数」，每张 = contractSize 个 base coin。
+        例: BTC 每张=0.01 BTC, ETH 每张=0.1 ETH, DOGE 每张=1000 DOGE
+        """
+        market = self._markets.get(symbol, {})
+        contract_size = float(market.get("contractSize", 1) or 1)
+        contracts = base_amount / contract_size
+        return contracts
+
     async def _open_position(self, symbol: str, direction: str, amount: float, price: float):
+        # amount 从 calc_position_size 来的是 base coin 数量，需要转成合约张数
+        amount = self._base_to_contracts(symbol, amount)
         amount = self._truncate_amount(symbol, amount)
         if amount <= 0:
             return
@@ -367,26 +380,38 @@ class LiveTrader:
             result = await self.exchange.create_market_order(symbol, side, amount)
             filled = result.get("average", price) or price
             filled_amount = result.get("filled", amount) or amount
-            margin = filled * filled_amount / self.leverage
+            base_filled = self._contracts_to_base(symbol, filled_amount)
+            margin = filled * base_filled / self.leverage
             self._positions[symbol] = {"direction": direction, "amount": filled_amount, "avg_price": filled}
             self.risk.reset_trailing(symbol)
-            logger.success(f"[开{('多' if direction=='long' else '空')}] {symbol} {filled_amount:.4f} @ {filled:.2f} | {self.leverage}x {self.margin_mode}")
+            logger.success(
+                f"[开{('多' if direction=='long' else '空')}] {symbol} "
+                f"{filled_amount:.4f}张(={base_filled:.6f}) @ {filled:.2f} | "
+                f"{self.leverage}x {self.margin_mode} | 保证金:{margin:.2f}"
+            )
 
             await self.notifier.notify_open(symbol, direction, filled_amount, filled, self.leverage, margin)
         except Exception as e:
             logger.error("开仓失败 " + symbol + ": " + str(e))
             await self.notifier.notify_error(f"开仓失败 {symbol}: {e}")
 
+    def _contracts_to_base(self, symbol: str, contracts: float) -> float:
+        """合约张数 → base coin 数量"""
+        market = self._markets.get(symbol, {})
+        contract_size = float(market.get("contractSize", 1) or 1)
+        return contracts * contract_size
+
     async def _close_position(self, symbol: str, pos: dict, price: float, reason: str) -> float:
-        """平仓，返回 PnL"""
+        """平仓，返回 PnL。pos['amount'] 是合约张数。"""
         side = "sell" if pos["direction"] == "long" else "buy"
         try:
             result = await self.exchange.create_market_order(symbol, side, pos["amount"])
             filled = result.get("average", price) or price
+            base_amount = self._contracts_to_base(symbol, pos["amount"])
             if pos["direction"] == "long":
-                pnl = (filled - pos["avg_price"]) * pos["amount"] * self.leverage
+                pnl = (filled - pos["avg_price"]) * base_amount * self.leverage
             else:
-                pnl = (pos["avg_price"] - filled) * pos["amount"] * self.leverage
+                pnl = (pos["avg_price"] - filled) * base_amount * self.leverage
             self._positions.pop(symbol, None)
             self.risk.reset_trailing(symbol)
             self.bot.record_trade(symbol, pos["direction"], pnl, reason)
@@ -399,11 +424,12 @@ class LiveTrader:
             return 0.0
 
     def _used_margin(self) -> float:
-        """当前持仓占用的保证金（仅本策略）"""
-        return sum(
-            p["amount"] * p["avg_price"] / self.leverage
-            for p in self._positions.values()
-        )
+        """当前持仓占用的保证金（仅本策略）。amount 是合约张数，需转 base。"""
+        total = 0.0
+        for sym, p in self._positions.items():
+            base = self._contracts_to_base(sym, p["amount"])
+            total += base * p["avg_price"] / self.leverage
+        return total
 
     def _estimate_equity(self, usdt_free: float) -> float:
         return usdt_free + self._used_margin()
