@@ -298,10 +298,10 @@ class LiveTrader:
                 f"全局可用:{usdt_free:.2f}"
             )
 
-        # 定时播报：每天 09:00 / 17:00 北京时间
+        # 定时播报：每天 09:00 / 17:00 北京时间（UTC 1:00 / 9:00）
         now = datetime.utcnow()
         status_key = f"{now.strftime('%Y-%m-%d')}-{now.hour}"
-        if now.hour in self._status_utc_hours and now.minute < 35 and status_key != self._last_status_key:
+        if now.hour in self._status_utc_hours and status_key != self._last_status_key:
             self._last_status_key = status_key
             prices = {}
             for symbol in self.symbols:
