@@ -7,7 +7,7 @@ exchange:
   api_key: ""
   api_secret: ""
   passphrase: ""
-  sandbox: true      # true=模拟盘, false=正式交易
+  sandbox: false      # true=模拟盘, false=正式交易
   timeout: 30000
   market_type: swap  # swap=永续合约, spot=现货
 

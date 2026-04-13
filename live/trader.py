@@ -376,8 +376,8 @@ class LiveTrader:
                 await self.notifier.notify_stop_loss(symbol, direction, current_price, pnl)
                 return
             if self.risk.check_take_profit(pos["avg_price"], current_price, direction, symbol):
-                pnl = await self._close_position(symbol, pos, current_price, "移动止盈")
-                await self.notifier.notify_trailing_stop(symbol, direction, current_price, pnl)
+                pnl = await self._close_position(symbol, pos, current_price, "止盈")
+                await self.notifier.notify_take_profit(symbol, direction, current_price, pnl)
                 return
 
         except Exception as e:

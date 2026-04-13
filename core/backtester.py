@@ -82,9 +82,9 @@ class Backtester:
                     self._close_position(symbol, stop_price, timestamp, reason="止损")
                     continue
 
-                # 移动止盈（仍用 close 判断，因为移动止盈是趋势跟踪不是精确价位）
+                # 止盈检查
                 if self.risk.check_take_profit(pos.avg_price, current_price, pos.direction, symbol):
-                    self._close_position(symbol, current_price, timestamp, reason="移动止盈")
+                    self._close_position(symbol, current_price, timestamp, reason="止盈")
                     continue
 
             # 策略信号
