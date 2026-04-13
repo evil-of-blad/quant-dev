@@ -156,15 +156,11 @@ class LiveTrader:
         """
         启动时检查：是否有进程宕机期间错过的交叉信号。
 
-        逻辑（仅针对 ma_crossover）:
-        - 对每个无持仓的 symbol，检查当前 MA 状态
-        - 如果 fast > slow + 价格在 SMA200 上方 → 应该持多（错过了金叉）
-        - 如果 fast < slow + 价格在 SMA200 下方 → 应该持空（错过了死叉）
-        - 直接开仓补上
-
-        注意：这只在启动时执行一次，不影响正常 tick 逻辑。
-        和 generate_signal 的区别：generate_signal 只在交叉 bar 返回信号，
-        这里是"状态检查"，用于补漏。
+        逻辑：
+        1. 去掉最后一根未收盘 K 线（用倒数第二根的已收盘数据）
+        2. 检查最近 12 根 K 线（48 小时）内是否发生过交叉
+        3. 如果有交叉且方向 + 趋势过滤通过 → 补仓
+        4. 如果交叉太久远（>48h）→ 不补（可能已经被止损过了）
         """
         strategy_params = self.config.get("strategy", {}).get("params", {})
         fast_period = strategy_params.get("fast_period", 15)
@@ -172,48 +168,77 @@ class LiveTrader:
         trend_period = strategy_params.get("trend_period", 200)
         trend_filter = strategy_params.get("trend_filter", True)
 
+        LOOKBACK = 12  # 检查最近 12 根 4h K 线（48 小时）
+
         caught_up = []
         for symbol in self.symbols:
-            # 已有持仓的不需要补
             if self._positions.get(symbol):
                 continue
 
             try:
                 df = await self.exchange.fetch_ohlcv(symbol, self.timeframe, limit=500)
                 df = add_indicators(df)
+
+                # 去掉最后一根未收盘 K 线
+                if len(df) < 2:
+                    continue
+                df = df.iloc[:-1]
+
                 price = float(df["close"].iloc[-1])
 
-                # 用 add_indicators 已经算好的列，避免重复 rolling 导致 NaN
                 fast_col = f"sma_{fast_period}"
                 slow_col = f"sma_{slow_period}"
                 trend_col = f"sma_{trend_period}"
 
-                # 如果 add_indicators 没有对应的列，手动计算（用原始 close）
                 fast_ma = float(df[fast_col].iloc[-1]) if fast_col in df.columns else float(df["close"].rolling(fast_period).mean().iloc[-1])
                 slow_ma = float(df[slow_col].iloc[-1]) if slow_col in df.columns else float(df["close"].rolling(slow_period).mean().iloc[-1])
                 sma200 = float(df[trend_col].iloc[-1]) if trend_col in df.columns else float(df["close"].rolling(trend_period).mean().iloc[-1])
 
-                if any(map(lambda x: x != x, [fast_ma, slow_ma, sma200])):  # NaN check
-                    logger.warning(f"[启动补仓] {symbol} MA 值含 NaN，跳过 (数据量={len(df)})")
+                if any(map(lambda x: x != x, [fast_ma, slow_ma, sma200])):
+                    logger.warning(f"[启动补仓] {symbol} MA 值含 NaN，跳过")
                     continue
 
+                # 检查最近 LOOKBACK 根 K 线内是否有交叉
+                fast_series = df[fast_col] if fast_col in df.columns else df["close"].rolling(fast_period).mean()
+                slow_series = df[slow_col] if slow_col in df.columns else df["close"].rolling(slow_period).mean()
+
+                recent_cross = None  # "golden" / "death" / None
+                recent_cross_bar = 0
+                for j in range(len(df) - LOOKBACK, len(df)):
+                    if j < 1:
+                        continue
+                    prev_f = float(fast_series.iloc[j - 1])
+                    prev_s = float(slow_series.iloc[j - 1])
+                    curr_f = float(fast_series.iloc[j])
+                    curr_s = float(slow_series.iloc[j])
+                    if prev_f != prev_f or curr_f != curr_f:  # NaN
+                        continue
+                    if prev_f <= prev_s and curr_f > curr_s:
+                        recent_cross = "golden"
+                        recent_cross_bar = len(df) - j
+                    elif prev_f >= prev_s and curr_f < curr_s:
+                        recent_cross = "death"
+                        recent_cross_bar = len(df) - j
+
+                # 判断方向
                 direction = None
-                if fast_ma > slow_ma and (price > sma200 or not trend_filter):
+                if recent_cross == "golden" and (price > sma200 or not trend_filter):
                     direction = "long"
-                elif fast_ma < slow_ma and (price < sma200 or not trend_filter):
+                elif recent_cross == "death" and (price < sma200 or not trend_filter):
                     direction = "short"
 
+                cross_desc = f"{recent_cross}({recent_cross_bar}根前)" if recent_cross else "无交叉"
                 logger.info(
-                    f"[启动补仓] {symbol} 状态检查 | price={price:.2f} "
+                    f"[启动补仓] {symbol} | price={price:.2f} "
                     f"SMA{fast_period}={fast_ma:.2f} SMA{slow_period}={slow_ma:.2f} "
                     f"SMA{trend_period}={sma200:.2f} | "
-                    f"{'→ ' + direction if direction else '无信号，跳过'}"
+                    f"最近交叉: {cross_desc} | "
+                    f"{'→ ' + direction if direction else '不补仓'}"
                 )
 
                 if direction is None:
                     continue
 
-                # 动态杠杆
                 dyn_lev = self._calc_dynamic_leverage(df)
 
                 atr = float(df["atr_14"].iloc[-1]) if "atr_14" in df.columns else 0.0
@@ -228,18 +253,13 @@ class LiveTrader:
                     continue
 
                 await self._open_position(symbol, direction, size, price, dyn_lev)
-                caught_up.append(f"{symbol} {direction} @ {price:.2f}")
-                logger.info(
-                    f"[启动补仓] {symbol} 检测到错过的{'金叉' if direction == 'long' else '死叉'}信号 | "
-                    f"SMA{fast_period}={fast_ma:.2f} vs SMA{slow_period}={slow_ma:.2f} | "
-                    f"价格={price:.2f} vs SMA200={sma200:.2f} | 开{direction}"
-                )
+                caught_up.append(f"{symbol} {direction} @ {price:.2f} ({cross_desc})")
 
             except Exception as e:
                 logger.warning(f"[启动补仓] {symbol} 检查失败: {e}")
 
         if caught_up:
-            msg = "🔄 <b>启动补仓（错过的信号）</b>\n" + "\n".join(f"• {c}" for c in caught_up)
+            msg = "🔄 启动补仓\n" + "\n".join(f"• {c}" for c in caught_up)
             await self.notifier.send(msg)
 
     async def _main_loop(self):
@@ -367,6 +387,9 @@ class LiveTrader:
         """慢档：策略信号检查（4h K 线收盘时）"""
         try:
             df = await self.exchange.fetch_ohlcv(symbol, self.timeframe, limit=300)
+            # 去掉最后一根未收盘 K 线，只用已收盘数据计算信号
+            if len(df) > 1:
+                df = df.iloc[:-1]
             df = add_indicators(df)
             current_price = float(df["close"].iloc[-1])
             pos = self._positions.get(symbol)
