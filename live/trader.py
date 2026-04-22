@@ -130,12 +130,14 @@ class LiveTrader:
                 "leverage": pos_lev,
             }
 
-            # 拉当前价 + ATR 检查是否已触发风控
+            # 拉当前价检查浮盈
             try:
                 ticker = await self.exchange.fetch_ticker(sym)
                 curr_price = float(ticker.get("last", entry) or entry)
-                pnl = (curr_price - entry) * contracts if side == "long" else (entry - curr_price) * contracts
-                pnl_pct = (pnl / (entry * contracts / self.leverage)) * 100 if entry > 0 else 0
+                base_amount = self._contracts_to_base(sym, contracts)
+                pnl = (curr_price - entry) * base_amount if side == "long" else (entry - curr_price) * base_amount
+                margin = entry * base_amount / pos_lev
+                pnl_pct = (pnl / margin) * 100 if margin > 0 else 0
 
                 line = f"{sym} {side} {contracts:.4f} @ {entry:.2f} | 现价 {curr_price:.2f} | 浮盈 {pnl_pct:+.2f}%"
                 recovered.append(line)
@@ -321,12 +323,15 @@ class LiveTrader:
         self._tick_count += 1
         is_signal_tick = self._is_signal_time()
 
+        # 真实权益 = 可用余额 + 占用保证金（近似，因为浮盈浮亏无法精确拆分到单策略）
+        equity = usdt_free + used_margin
+
         # 信号 tick 时打详细日志 + 每日快照
         if is_signal_tick:
-            self.stats.daily_snapshot(self.allocated_capital + self.stats.data["total_pnl"])
+            self.stats.daily_snapshot(equity)
             logger.info(
                 f"[{datetime.utcnow().strftime('%H:%M:%S')}] "
-                f"分配:{self.allocated_capital:.2f} | 已用:{used_margin:.2f} | "
+                f"权益:{equity:.2f} | 分配:{self.allocated_capital:.2f} | 已用:{used_margin:.2f} | "
                 f"全局可用:{usdt_free:.2f}"
             )
 
@@ -344,9 +349,9 @@ class LiveTrader:
                     pass
             await self.notifier.notify_status(equity, usdt_free, self._positions, prices, self._contracts_to_base)
 
-        # 熔断检查（每次 tick 都做）
+        # 熔断检查（用真实权益，每次 tick 都做）
         if self.risk.check_drawdown(equity):
-            logger.warning("熔断触发，跳过信号")
+            logger.warning(f"熔断触发，权益={equity:.2f}，跳过信号")
             dd = (self.risk._peak_equity - equity) / self.risk._peak_equity if self.risk._peak_equity > 0 else 0
             if self.risk._cooldown_counter == self.risk.cooldown_bars - 1:
                 await self.notifier.notify_circuit_breaker(equity, dd)
@@ -536,17 +541,16 @@ class LiveTrader:
         return contracts * contract_size
 
     async def _close_position(self, symbol: str, pos: dict, price: float, reason: str) -> float:
-        """平仓，返回 PnL。pos['amount'] 是合约张数。"""
+        """平仓，返回 PnL。pos['amount'] 是合约张数。PnL = 价差 × base数量（不乘杠杆）。"""
         side = "sell" if pos["direction"] == "long" else "buy"
-        pos_lev = pos.get("leverage", self.leverage)
         try:
             result = await self.exchange.create_market_order(symbol, side, pos["amount"])
             filled = result.get("average", price) or price
             base_amount = self._contracts_to_base(symbol, pos["amount"])
             if pos["direction"] == "long":
-                pnl = (filled - pos["avg_price"]) * base_amount * pos_lev
+                pnl = (filled - pos["avg_price"]) * base_amount
             else:
-                pnl = (pos["avg_price"] - filled) * base_amount * pos_lev
+                pnl = (pos["avg_price"] - filled) * base_amount
             self._positions.pop(symbol, None)
             self.risk.reset_trailing(symbol)
             self.bot.record_trade(symbol, pos["direction"], pnl, reason)
