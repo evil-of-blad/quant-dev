@@ -239,6 +239,12 @@ class LiveTrader:
                 if direction is None:
                     continue
 
+                # ADX 过滤
+                adx_val = float(df["adx_14"].iloc[-1]) if "adx_14" in df.columns else 99
+                if adx_val < self.adx_min:
+                    logger.info(f"[启动补仓] {symbol} ADX={adx_val:.1f} < {self.adx_min}，跳过")
+                    continue
+
                 dyn_lev = self._calc_dynamic_leverage(df)
 
                 atr = float(df["atr_14"].iloc[-1]) if "atr_14" in df.columns else 0.0
@@ -406,11 +412,24 @@ class LiveTrader:
 
             signal = self.strategy.generate_signal(df, symbol)
 
+            # ADX 开仓过滤：ADX < adx_min 时不开新仓（但仍平反向仓位）
+            adx_val = float(df["adx_14"].iloc[-1]) if "adx_14" in df.columns else 99
             coin = symbol.split("/")[0]
             logger.info(
                 f"[信号检查] {coin} price={current_price:.2f} | signal={signal} | "
-                f"lev={dyn_lev}x | pos={'有' if pos else '无'}"
+                f"ADX={adx_val:.1f} | lev={dyn_lev}x | pos={'有' if pos else '无'}"
             )
+
+            if signal != 0 and adx_val < self.adx_min:
+                logger.info(f"[信号过滤] {coin} ADX={adx_val:.1f} < {self.adx_min}，跳过开仓")
+                # 仍然平反向仓位
+                if signal == 1 and pos and pos["direction"] == "short":
+                    pnl = await self._close_position(symbol, pos, current_price, "反手做多")
+                    await self.notifier.notify_close(symbol, "short", current_price, pnl, "反手做多")
+                elif signal == -1 and pos and pos["direction"] == "long":
+                    pnl = await self._close_position(symbol, pos, current_price, "反手做空")
+                    await self.notifier.notify_close(symbol, "long", current_price, pnl, "反手做空")
+                continue
 
             if signal == 1:
                 if pos and pos["direction"] == "short":
@@ -419,7 +438,7 @@ class LiveTrader:
                 if not self._positions.get(symbol):
                     stop = self.risk.calc_stop_price(current_price, "long", atr)
                     size = self.risk.calc_position_size(equity, current_price, stop)
-                    size = size * dyn_lev / self.leverage  # 按动态杠杆调整仓位
+                    size = size * dyn_lev / self.leverage
                     available_capital = max(0, self.allocated_capital - self._used_margin())
                     size = min(size, available_capital * dyn_lev * 0.95 / current_price)
                     if size > 0:
