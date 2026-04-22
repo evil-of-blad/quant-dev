@@ -294,10 +294,14 @@ class LiveTrader:
         return self.leverage
 
     def _is_signal_time(self) -> bool:
-        """判断当前是否是 4h K 线收盘时间（UTC 0/4/8/12/16/20 点附近）"""
+        """
+        判断当前是否该检查信号。
+        OKX 4h K 线在 UTC 0/4/8/12/16/20 收盘。
+        fetch_ohlcv 在整点后返回的最后一根是刚开始的新 bar（未收盘），
+        倒数第二根才是刚收盘的。所以 _check_signal 去掉最后一根是对的。
+        检查时机也在整点后，确保倒数第二根已完整。
+        """
         now = datetime.utcnow()
-        # 4h K 线在 UTC 0,4,8,12,16,20 收盘
-        # 允许 5 分钟误差窗口
         return now.hour % 4 == 0 and now.minute < 35
 
     async def _tick(self):
@@ -386,8 +390,10 @@ class LiveTrader:
     async def _check_signal(self, symbol: str, usdt_free: float, equity: float):
         """慢档：策略信号检查（4h K 线收盘时）"""
         try:
-            df = await self.exchange.fetch_ohlcv(symbol, self.timeframe, limit=300)
-            # 去掉最后一根未收盘 K 线，只用已收盘数据计算信号
+            # limit=500: add_indicators 的 dropna 会丢掉 ~200 根 warmup，
+            # generate_signal 需要至少 202 根，所以 500 - 200 = 300 根够用
+            df = await self.exchange.fetch_ohlcv(symbol, self.timeframe, limit=500)
+            # 去掉最后一根未收盘 K 线
             if len(df) > 1:
                 df = df.iloc[:-1]
             df = add_indicators(df)
@@ -399,6 +405,12 @@ class LiveTrader:
             dyn_lev = self._calc_dynamic_leverage(df)
 
             signal = self.strategy.generate_signal(df, symbol)
+
+            coin = symbol.split("/")[0]
+            logger.info(
+                f"[信号检查] {coin} price={current_price:.2f} | signal={signal} | "
+                f"lev={dyn_lev}x | pos={'有' if pos else '无'}"
+            )
 
             if signal == 1:
                 if pos and pos["direction"] == "short":
