@@ -69,11 +69,8 @@ class LiveTrader:
             logger.error("布林带未分配资金，请检查 config.allocation.bollinger_pct")
             return
 
-        # ★ 启动时仓位同步：从交易所拉取真实持仓
-        await self._reconcile_positions()
-
-        # ★ 启动补仓：检查是否有信号被错过（进程重启/宕机期间）
-        await self._catchup_missed_signals()
+        # ★ 启动时全面检查：恢复持仓 → 检查风控 → 检查信号
+        await self._startup_check()
 
         logger.info(
             f"实盘启动 | 策略:{self.strategy.name} | 标的:{self.symbols} "
@@ -100,19 +97,23 @@ class LiveTrader:
         await self.exchange.close()
         logger.info("实盘已停止")
 
-    async def _reconcile_positions(self):
+    async def _startup_check(self):
         """
-        启动时同步交易所真实持仓到内存。
-        恢复后立即检查是否已触发止损/止盈，提前预警。
+        启动时全面检查，分三步：
+
+        第一步：从交易所恢复持仓到内存
+        第二步：对已有持仓检查是否应该止损/止盈/反手
+        第三步：对无持仓的标的，用和正常开仓完全一致的逻辑检查信号
+                （只看最近 2 根已收盘 K 线是否有交叉，不做 48h 回溯）
         """
+        logger.info("[启动检查] 开始全面检查...")
+
+        # ========== 第一步：恢复持仓 ==========
         try:
             positions = await self.exchange.client.fetch_positions(self.symbols)
         except Exception as e:
-            logger.warning(f"拉取持仓失败，跳过同步: {e}")
-            return
-
-        recovered = []
-        warnings = []
+            logger.warning(f"[启动检查] 拉取持仓失败: {e}")
+            positions = []
 
         for p in positions:
             sym = p.get("symbol")
@@ -130,147 +131,148 @@ class LiveTrader:
                 "leverage": pos_lev,
             }
 
-            # 拉当前价检查浮盈
+            coin = sym.split("/")[0]
+            base_amount = self._contracts_to_base(sym, contracts)
             try:
                 ticker = await self.exchange.fetch_ticker(sym)
                 curr_price = float(ticker.get("last", entry) or entry)
-                base_amount = self._contracts_to_base(sym, contracts)
                 pnl = (curr_price - entry) * base_amount if side == "long" else (entry - curr_price) * base_amount
                 margin = entry * base_amount / pos_lev
                 pnl_pct = (pnl / margin) * 100 if margin > 0 else 0
+                logger.info(f"[启动检查] 恢复 {coin} {side} {contracts:.1f}张 @ {entry:.2f} | 现价 {curr_price:.2f} | 浮盈 {pnl_pct:+.1f}%")
+            except Exception:
+                logger.info(f"[启动检查] 恢复 {coin} {side} {contracts:.1f}张 @ {entry:.2f}")
 
-                line = f"{sym} {side} {contracts:.4f} @ {entry:.2f} | 现价 {curr_price:.2f} | 浮盈 {pnl_pct:+.2f}%"
-                recovered.append(line)
-                logger.info(f"恢复持仓: {line}")
+        # ========== 第二步：对已有持仓检查风控 ==========
+        for symbol in self.symbols:
+            pos = self._positions.get(symbol)
+            if not pos:
+                continue
 
-                # 提前警告：如果浮亏接近止损比例，提示用户
-                if pnl_pct < -self.risk.stop_loss_pct * 100 * 0.8:
-                    warnings.append(f"⚠️ {sym} 浮亏 {pnl_pct:.2f}% 接近止损线")
+            coin = symbol.split("/")[0]
+            try:
+                df = await self.exchange.fetch_ohlcv(symbol, self.timeframe, limit=500)
+                if len(df) > 1:
+                    df = df.iloc[:-1]
+                df = add_indicators(df)
+
+                current_price = float(df["close"].iloc[-1])
+                atr = float(df["atr_14"].iloc[-1]) if "atr_14" in df.columns else 0.0
+
+                # 检查止损
+                stop_price = self.risk.calc_stop_price(pos["avg_price"], pos["direction"], atr)
+                if pos["direction"] == "long" and current_price <= stop_price:
+                    logger.warning(f"[启动检查] {coin} 已触及止损线 ({current_price:.2f} ≤ {stop_price:.2f})，立即平仓")
+                    pnl = await self._close_position(symbol, pos, current_price, "启动止损")
+                    await self.notifier.send(f"🛑 启动止损 {coin} @ {current_price:.2f} | PnL {pnl:+.2f}U")
+                    continue
+                elif pos["direction"] == "short" and current_price >= stop_price:
+                    logger.warning(f"[启动检查] {coin} 已触及止损线 ({current_price:.2f} ≥ {stop_price:.2f})，立即平仓")
+                    pnl = await self._close_position(symbol, pos, current_price, "启动止损")
+                    await self.notifier.send(f"🛑 启动止损 {coin} @ {current_price:.2f} | PnL {pnl:+.2f}U")
+                    continue
+
+                # 检查止盈
+                if self.risk.check_take_profit(pos["avg_price"], current_price, pos["direction"], symbol):
+                    logger.info(f"[启动检查] {coin} 已触及止盈，立即平仓")
+                    pnl = await self._close_position(symbol, pos, current_price, "启动止盈")
+                    await self.notifier.send(f"🎯 启动止盈 {coin} @ {current_price:.2f} | PnL {pnl:+.2f}U")
+                    continue
+
+                # 检查是否应该反手（当前信号和持仓方向相反）
+                signal = self.strategy.generate_signal(df, symbol)
+                adx_val = float(df["adx_14"].iloc[-1]) if "adx_14" in df.columns else 0
+
+                if signal == 1 and pos["direction"] == "short" and adx_val >= self.adx_min:
+                    logger.info(f"[启动检查] {coin} 有做多信号但当前持空，反手")
+                    pnl = await self._close_position(symbol, pos, current_price, "启动反手做多")
+                    await self.notifier.notify_close(symbol, "short", current_price, pnl, "启动反手做多")
+                    # 开多
+                    dyn_lev = self._calc_dynamic_leverage(df)
+                    stop = self.risk.calc_stop_price(current_price, "long", atr)
+                    size = self.risk.calc_position_size(self.allocated_capital, current_price, stop)
+                    size = size * dyn_lev / self.leverage
+                    available_capital = max(0, self.allocated_capital - self._used_margin())
+                    size = min(size, available_capital * dyn_lev * 0.95 / current_price)
+                    if size > 0:
+                        await self._open_position(symbol, "long", size, current_price, dyn_lev)
+                    continue
+
+                elif signal == -1 and pos["direction"] == "long" and adx_val >= self.adx_min:
+                    logger.info(f"[启动检查] {coin} 有做空信号但当前持多，反手")
+                    pnl = await self._close_position(symbol, pos, current_price, "启动反手做空")
+                    await self.notifier.notify_close(symbol, "long", current_price, pnl, "启动反手做空")
+                    dyn_lev = self._calc_dynamic_leverage(df)
+                    stop = self.risk.calc_stop_price(current_price, "short", atr)
+                    size = self.risk.calc_position_size(self.allocated_capital, current_price, stop)
+                    size = size * dyn_lev / self.leverage
+                    available_capital = max(0, self.allocated_capital - self._used_margin())
+                    size = min(size, available_capital * dyn_lev * 0.95 / current_price)
+                    if size > 0:
+                        await self._open_position(symbol, "short", size, current_price, dyn_lev)
+                    continue
+
+                logger.info(f"[启动检查] {coin} 持仓正常，继续持有")
+
             except Exception as e:
-                recovered.append(f"{sym} {side} {contracts:.4f} @ {entry:.2f}")
-                logger.warning(f"恢复持仓但无法获取实时价: {e}")
+                logger.warning(f"[启动检查] {coin} 风控检查失败: {e}")
 
-        if recovered:
-            msg = "🔄 <b>启动时恢复持仓</b>\n" + "\n".join(f"• {r}" for r in recovered)
-            if warnings:
-                msg += "\n\n" + "\n".join(warnings)
-            await self.notifier.send(msg)
-
-    async def _catchup_missed_signals(self):
-        """
-        启动时检查：是否有进程宕机期间错过的交叉信号。
-
-        逻辑：
-        1. 去掉最后一根未收盘 K 线（用倒数第二根的已收盘数据）
-        2. 检查最近 12 根 K 线（48 小时）内是否发生过交叉
-        3. 如果有交叉且方向 + 趋势过滤通过 → 补仓
-        4. 如果交叉太久远（>48h）→ 不补（可能已经被止损过了）
-        """
-        strategy_params = self.config.get("strategy", {}).get("params", {})
-        fast_period = strategy_params.get("fast_period", 15)
-        slow_period = strategy_params.get("slow_period", 50)
-        trend_period = strategy_params.get("trend_period", 200)
-        trend_filter = strategy_params.get("trend_filter", True)
-
-        LOOKBACK = 12  # 检查最近 12 根 4h K 线（48 小时）
-
-        caught_up = []
+        # ========== 第三步：对无持仓标的，用正常信号逻辑检查 ==========
+        # 只看最近 2 根已收盘 K 线是否有交叉（和 generate_signal 完全一致）
+        # 不做 48h 回溯，避免重复开已止损过的仓位
         for symbol in self.symbols:
             if self._positions.get(symbol):
                 continue
 
+            coin = symbol.split("/")[0]
             try:
                 df = await self.exchange.fetch_ohlcv(symbol, self.timeframe, limit=500)
+                if len(df) > 1:
+                    df = df.iloc[:-1]
                 df = add_indicators(df)
 
-                # 去掉最后一根未收盘 K 线
-                if len(df) < 2:
-                    continue
-                df = df.iloc[:-1]
+                signal = self.strategy.generate_signal(df, symbol)
+                adx_val = float(df["adx_14"].iloc[-1]) if "adx_14" in df.columns else 0
+                current_price = float(df["close"].iloc[-1])
+                atr = float(df["atr_14"].iloc[-1]) if "atr_14" in df.columns else 0.0
 
-                price = float(df["close"].iloc[-1])
-
-                fast_col = f"sma_{fast_period}"
-                slow_col = f"sma_{slow_period}"
-                trend_col = f"sma_{trend_period}"
-
-                fast_ma = float(df[fast_col].iloc[-1]) if fast_col in df.columns else float(df["close"].rolling(fast_period).mean().iloc[-1])
-                slow_ma = float(df[slow_col].iloc[-1]) if slow_col in df.columns else float(df["close"].rolling(slow_period).mean().iloc[-1])
-                sma200 = float(df[trend_col].iloc[-1]) if trend_col in df.columns else float(df["close"].rolling(trend_period).mean().iloc[-1])
-
-                if any(map(lambda x: x != x, [fast_ma, slow_ma, sma200])):
-                    logger.warning(f"[启动补仓] {symbol} MA 值含 NaN，跳过")
-                    continue
-
-                # 检查最近 LOOKBACK 根 K 线内是否有交叉
-                fast_series = df[fast_col] if fast_col in df.columns else df["close"].rolling(fast_period).mean()
-                slow_series = df[slow_col] if slow_col in df.columns else df["close"].rolling(slow_period).mean()
-
-                recent_cross = None  # "golden" / "death" / None
-                recent_cross_bar = 0
-                for j in range(len(df) - LOOKBACK, len(df)):
-                    if j < 1:
-                        continue
-                    prev_f = float(fast_series.iloc[j - 1])
-                    prev_s = float(slow_series.iloc[j - 1])
-                    curr_f = float(fast_series.iloc[j])
-                    curr_s = float(slow_series.iloc[j])
-                    if prev_f != prev_f or curr_f != curr_f:  # NaN
-                        continue
-                    if prev_f <= prev_s and curr_f > curr_s:
-                        recent_cross = "golden"
-                        recent_cross_bar = len(df) - j
-                    elif prev_f >= prev_s and curr_f < curr_s:
-                        recent_cross = "death"
-                        recent_cross_bar = len(df) - j
-
-                # 判断方向
-                direction = None
-                if recent_cross == "golden" and (price > sma200 or not trend_filter):
-                    direction = "long"
-                elif recent_cross == "death" and (price < sma200 or not trend_filter):
-                    direction = "short"
-
-                cross_desc = f"{recent_cross}({recent_cross_bar}根前)" if recent_cross else "无交叉"
                 logger.info(
-                    f"[启动补仓] {symbol} | price={price:.2f} "
-                    f"SMA{fast_period}={fast_ma:.2f} SMA{slow_period}={slow_ma:.2f} "
-                    f"SMA{trend_period}={sma200:.2f} | "
-                    f"最近交叉: {cross_desc} | "
-                    f"{'→ ' + direction if direction else '不补仓'}"
+                    f"[启动检查] {coin} 无持仓 | signal={signal} | ADX={adx_val:.1f} | "
+                    f"price={current_price:.2f}"
                 )
 
-                if direction is None:
+                if signal == 0:
                     continue
-
-                # ADX 过滤
-                adx_val = float(df["adx_14"].iloc[-1]) if "adx_14" in df.columns else 99
                 if adx_val < self.adx_min:
-                    logger.info(f"[启动补仓] {symbol} ADX={adx_val:.1f} < {self.adx_min}，跳过")
+                    logger.info(f"[启动检查] {coin} ADX={adx_val:.1f} < {self.adx_min}，跳过")
                     continue
 
+                direction = "long" if signal == 1 else "short"
                 dyn_lev = self._calc_dynamic_leverage(df)
-
-                atr = float(df["atr_14"].iloc[-1]) if "atr_14" in df.columns else 0.0
-                equity = self.allocated_capital
-                stop = self.risk.calc_stop_price(price, direction, atr)
-                size = self.risk.calc_position_size(equity, price, stop)
+                stop = self.risk.calc_stop_price(current_price, direction, atr)
+                size = self.risk.calc_position_size(self.allocated_capital, current_price, stop)
                 size = size * dyn_lev / self.leverage
                 available_capital = max(0, self.allocated_capital - self._used_margin())
-                size = min(size, available_capital * dyn_lev * 0.95 / price)
+                size = min(size, available_capital * dyn_lev * 0.95 / current_price)
 
-                if size <= 0:
-                    continue
-
-                await self._open_position(symbol, direction, size, price, dyn_lev)
-                caught_up.append(f"{symbol} {direction} @ {price:.2f} ({cross_desc})")
+                if size > 0:
+                    logger.info(f"[启动检查] {coin} 检测到交叉信号 → 开{direction}")
+                    await self._open_position(symbol, direction, size, current_price, dyn_lev)
 
             except Exception as e:
-                logger.warning(f"[启动补仓] {symbol} 检查失败: {e}")
+                logger.warning(f"[启动检查] {coin} 信号检查失败: {e}")
 
-        if caught_up:
-            msg = "🔄 启动补仓\n" + "\n".join(f"• {c}" for c in caught_up)
-            await self.notifier.send(msg)
+        # 汇总通知
+        pos_count = len(self._positions)
+        if pos_count > 0:
+            lines = []
+            for sym, pos in self._positions.items():
+                coin = sym.split("/")[0]
+                d = "多" if pos["direction"] == "long" else "空"
+                lines.append(f"{coin} {d} {pos['amount']:.1f}张 @ {pos['avg_price']:.2f} {pos.get('leverage', self.leverage)}x")
+            await self.notifier.send(f"🔄 启动完成 | 持仓 {pos_count} 个\n" + "\n".join(f"• {l}" for l in lines))
+        else:
+            await self.notifier.send("🔄 启动完成 | 无持仓")
 
     async def _main_loop(self):
         while self._running:
