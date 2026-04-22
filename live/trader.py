@@ -122,10 +122,12 @@ class LiveTrader:
 
             side = p.get("side")
             entry = float(p.get("entryPrice", 0) or 0)
+            pos_lev = int(float(p.get("leverage", self.leverage) or self.leverage))
             self._positions[sym] = {
                 "direction": side,
                 "amount": contracts,
                 "avg_price": entry,
+                "leverage": pos_lev,
             }
 
             # 拉当前价 + ATR 检查是否已触发风控
@@ -352,9 +354,13 @@ class LiveTrader:
 
         for symbol in self.symbols:
             # 止损/止盈：每次 tick 都检查（30min）
+            had_position = symbol in self._positions
             await self._check_risk(symbol)
+            just_closed = had_position and symbol not in self._positions
+
             # 策略信号：只在 4h K 线收盘时检查
-            if is_signal_tick:
+            # 如果刚止盈/止损平仓，本 tick 不再开新仓（和回测行为一致）
+            if is_signal_tick and not just_closed:
                 await self._check_signal(symbol, usdt_free, equity)
 
     async def _check_risk(self, symbol: str):
@@ -429,7 +435,7 @@ class LiveTrader:
                 elif signal == -1 and pos and pos["direction"] == "long":
                     pnl = await self._close_position(symbol, pos, current_price, "反手做空")
                     await self.notifier.notify_close(symbol, "long", current_price, pnl, "反手做空")
-                continue
+                return
 
             if signal == 1:
                 if pos and pos["direction"] == "short":
