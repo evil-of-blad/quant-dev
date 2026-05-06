@@ -25,12 +25,12 @@ trading:
   margin_mode: isolated   # isolated=逐仓, cross=全仓
 
 risk:
-  max_position_pct: 0.2      # 单笔最大仓位占总资金比例 (20%)
+  max_position_pct: 0.25     # 单笔最大仓位占总资金比例 (25%)
   max_total_position_pct: 0.8 # 总仓位上限 (80%)
   stop_loss_pct: 0.03         # 止损比例 (3%)
   take_profit_pct: 0.06       # 止盈比例 (6%)
   max_drawdown_pct: 0.15      # 最大回撤熔断 (15%)
-  risk_per_trade_pct: 0.01    # 单笔风险占总资金 (1%)
+  risk_per_trade_pct: 0.015   # 单笔风险占总资金 (1.5%，约 1/7 Kelly)
   cooldown_bars: 100          # 熔断后冷却K线数（4h×100=约17天后重启）
   # ATR 动态止损（根据波动率自适应，替代固定止损）
   use_atr_stop: true
