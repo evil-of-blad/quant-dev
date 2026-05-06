@@ -1,7 +1,8 @@
 """
-双均线交叉策略（含 200 均线趋势过滤）
+双均线交叉策略（含 200 均线趋势过滤 + RSI 超卖重入）
 - 金叉 + 价格在 SMA200 上方 → 做多
 - 死叉 + 价格在 SMA200 下方 → 做空
+- RSI 重入：趋势中 RSI 从超卖/超买区回升 → 重新入场
 - 趋势过滤可通过 trend_filter=False 关闭
 """
 import pandas as pd
@@ -11,10 +12,13 @@ from .base import BaseStrategy
 class MACrossoverStrategy(BaseStrategy):
     """
     参数:
-        fast_period  (int):  快线周期，默认 20
-        slow_period  (int):  慢线周期，默认 30
-        trend_period (int):  趋势过滤均线周期，默认 200
-        trend_filter (bool): 是否开启趋势过滤，默认 True
+        fast_period      (int):  快线周期，默认 20
+        slow_period      (int):  慢线周期，默认 30
+        trend_period     (int):  趋势过滤均线周期，默认 200
+        trend_filter     (bool): 是否开启趋势过滤，默认 True
+        rsi_reentry      (bool): 是否开启 RSI 超卖重入，默认 True
+        rsi_reentry_low  (int):  RSI 重入超卖阈值，默认 35
+        rsi_reentry_high (int):  RSI 重入超买阈值，默认 65
     """
 
     def __init__(self, params: dict):
@@ -23,6 +27,9 @@ class MACrossoverStrategy(BaseStrategy):
         self.slow = params.get("slow_period", 30)
         self.trend_period = params.get("trend_period", 200)
         self.trend_filter = params.get("trend_filter", True)
+        self.rsi_reentry = params.get("rsi_reentry", True)
+        self.rsi_reentry_low = params.get("rsi_reentry_low", 35)
+        self.rsi_reentry_high = params.get("rsi_reentry_high", 65)
 
     def generate_signal(self, df: pd.DataFrame, symbol: str) -> int:
         min_len = max(self.slow, self.trend_period if self.trend_filter else 0) + 2
@@ -68,5 +75,17 @@ class MACrossoverStrategy(BaseStrategy):
         if prev_fast >= prev_slow and curr_fast < curr_slow:
             if below_trend:
                 return -1
+
+        # RSI 超卖/超买重入：趋势确立时，RSI 从极端区域回升 → 重新入场
+        if self.rsi_reentry and "rsi_14" in df.columns:
+            curr_rsi = df["rsi_14"].iloc[-1]
+            prev_rsi = df["rsi_14"].iloc[-2]
+            if not pd.isna(curr_rsi) and not pd.isna(prev_rsi):
+                trend_up = curr_fast > curr_slow and above_trend
+                trend_down = curr_fast < curr_slow and below_trend
+                if trend_up and prev_rsi < self.rsi_reentry_low and curr_rsi >= self.rsi_reentry_low:
+                    return 1
+                if trend_down and prev_rsi > self.rsi_reentry_high and curr_rsi <= self.rsi_reentry_high:
+                    return -1
 
         return 0

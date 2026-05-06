@@ -56,6 +56,10 @@ strategy:
     slow_period: 50
     trend_period: 200
     trend_filter: true
+    # RSI 重入：趋势确立后 RSI 从超卖/超买回升时重新入场
+    rsi_reentry: true
+    rsi_reentry_low: 35       # RSI 低于此值后回升 → 做多重入
+    rsi_reentry_high: 65      # RSI 高于此值后回落 → 做空重入
     # RSI 参数（保留以便快速切换策略）
     rsi_period: 14
     rsi_oversold: 30
